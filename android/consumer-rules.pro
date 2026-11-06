@@ -9,12 +9,16 @@
 -keep class com.ttlock.ttlock_flutter.** { *; }
 -keepclassmembers class com.ttlock.ttlock_flutter.** { *; }
 
-# Gson models used by SDK / plugin JSON bridges
+# Gson models used by SDK / plugin JSON bridges.
+# R8 full mode drops the generic signature of TypeToken subclasses even when
+# Signature is kept, then `new TypeToken<...>()` crashes in release.
 -keepattributes Signature
 -keepattributes *Annotation*
 -keepclassmembers,allowobfuscation class * {
   @com.google.gson.annotations.SerializedName <fields>;
 }
+-keep,allowobfuscation,allowshrinking class com.google.gson.reflect.TypeToken
+-keep,allowobfuscation,allowshrinking class * extends com.google.gson.reflect.TypeToken
 -dontwarn com.google.gson.**
 
 # OkHttp (SDK networking)

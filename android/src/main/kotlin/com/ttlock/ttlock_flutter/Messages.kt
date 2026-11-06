@@ -2588,8 +2588,15 @@ data class GatewayDeviceInfo (
 data class TTRemoteAccessoryScanModel (
   /** 设备名称。 */
   val name: String,
-  /** 蓝牙 MAC 地址。 */
+  /** 设备逻辑 MAC 地址（广播解析出的地址，用于业务标识）。 */
   val mac: String,
+  /**
+   * BLE 连接地址。
+   *
+   * R2 遥控器初始化连接须使用此字段，不可用 [mac] 替代；
+   * R1 / 键盘 / 门磁等可与 [mac] 相同，或为空（回退使用 [mac]）。
+   */
+  val connectAddress: String? = null,
   /** 蓝牙信号强度。 */
   val rssi: Long,
   /** 扫描时间戳。 */
@@ -2604,17 +2611,19 @@ data class TTRemoteAccessoryScanModel (
     fun fromList(pigeonVar_list: List<Any?>): TTRemoteAccessoryScanModel {
       val name = pigeonVar_list[0] as String
       val mac = pigeonVar_list[1] as String
-      val rssi = pigeonVar_list[2] as Long
-      val scanTime = pigeonVar_list[3] as Long?
-      val isMultifunctionalKeypad = pigeonVar_list[4] as Boolean
-      val advertisementData = pigeonVar_list[5] as Map<String, Any?>
-      return TTRemoteAccessoryScanModel(name, mac, rssi, scanTime, isMultifunctionalKeypad, advertisementData)
+      val connectAddress = pigeonVar_list[2] as String?
+      val rssi = pigeonVar_list[3] as Long
+      val scanTime = pigeonVar_list[4] as Long?
+      val isMultifunctionalKeypad = pigeonVar_list[5] as Boolean
+      val advertisementData = pigeonVar_list[6] as Map<String, Any?>
+      return TTRemoteAccessoryScanModel(name, mac, connectAddress, rssi, scanTime, isMultifunctionalKeypad, advertisementData)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       name,
       mac,
+      connectAddress,
       rssi,
       scanTime,
       isMultifunctionalKeypad,
@@ -2629,13 +2638,14 @@ data class TTRemoteAccessoryScanModel (
       return true
     }
     val other = other as TTRemoteAccessoryScanModel
-    return MessagesPigeonUtils.deepEquals(this.name, other.name) && MessagesPigeonUtils.deepEquals(this.mac, other.mac) && MessagesPigeonUtils.deepEquals(this.rssi, other.rssi) && MessagesPigeonUtils.deepEquals(this.scanTime, other.scanTime) && MessagesPigeonUtils.deepEquals(this.isMultifunctionalKeypad, other.isMultifunctionalKeypad) && MessagesPigeonUtils.deepEquals(this.advertisementData, other.advertisementData)
+    return MessagesPigeonUtils.deepEquals(this.name, other.name) && MessagesPigeonUtils.deepEquals(this.mac, other.mac) && MessagesPigeonUtils.deepEquals(this.connectAddress, other.connectAddress) && MessagesPigeonUtils.deepEquals(this.rssi, other.rssi) && MessagesPigeonUtils.deepEquals(this.scanTime, other.scanTime) && MessagesPigeonUtils.deepEquals(this.isMultifunctionalKeypad, other.isMultifunctionalKeypad) && MessagesPigeonUtils.deepEquals(this.advertisementData, other.advertisementData)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + MessagesPigeonUtils.deepHash(this.name)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.mac)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.connectAddress)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.rssi)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.scanTime)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.isMultifunctionalKeypad)
@@ -7346,10 +7356,11 @@ interface TTAccessoryHostApi {
   /**
    * 初始化遥控器。
    *
-   * [mac] 遥控器 MAC 地址。
+   * [mac] 遥控器逻辑 MAC 地址（广播解析出的地址）。
    * [lockData] 关联锁凭证。
+   * [connectAddress] R2 初始化时用于 BLE 连接的地址；为空则回退使用 [mac]。
    */
-  fun initRemoteKey(mac: String, lockData: String, callback: (Result<TTLockSystemModel>) -> Unit)
+  fun initRemoteKey(mac: String, lockData: String, connectAddress: String?, callback: (Result<TTLockSystemModel>) -> Unit)
   /**
    * 初始化无线键盘。
    *
@@ -7698,7 +7709,8 @@ interface TTAccessoryHostApi {
             val args = message as List<Any?>
             val macArg = args[0] as String
             val lockDataArg = args[1] as String
-            api.initRemoteKey(macArg, lockDataArg) { result: Result<TTLockSystemModel> ->
+            val connectAddressArg = args[2] as String?
+            api.initRemoteKey(macArg, lockDataArg, connectAddressArg) { result: Result<TTLockSystemModel> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(MessagesPigeonUtils.wrapError(error))
