@@ -17,7 +17,6 @@ import com.ttlock.bl.sdk.entity.LockError
 import com.ttlock.bl.sdk.util.FeatureValueUtil
 import com.ttlock.bl.sdk.util.LogUtil
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.ttlock.bl.sdk.callback.*
 import com.ttlock.bl.sdk.constant.*
 import com.ttlock.bl.sdk.entity.*
@@ -45,14 +44,9 @@ class LockApi: TTLockHostApi {
 
     private val gson: Gson = Gson()
 
-    private fun <T> parseJson(json: String, type: TypeToken<T>): T {
-        return gson.fromJson(json, type.type)
-    }
-
     private fun parseJsonListMaps(json: String): List<Map<String, Any?>> {
         if (TextUtils.isEmpty(json)) return emptyList()
-        val type = object : TypeToken<List<Map<String, Any?>>>() {}
-        return parseJson(json, type)
+        return gson.fromJson(json, gsonStringAnyMapListType)
     }
 
     private fun mapLongValue(data: Map<String, Any?>, key: String): Long {
@@ -85,10 +79,10 @@ class LockApi: TTLockHostApi {
             validityInfo.modeType = ValidityInfo.TIMED
         }else {
             validityInfo.modeType = ValidityInfo.CYCLIC
-            val cyclicConfigs: List<CyclicConfig> = run {
-                val type = object : TypeToken<List<CyclicConfig>>() {}
-                gson.fromJson(gson.toJson(cycleList), type.type)
-            }
+            val cyclicConfigs: List<CyclicConfig> = gson.fromJson(
+                gson.toJson(cycleList),
+                gsonListType(CyclicConfig::class.java),
+            )
             validityInfo.cyclicConfigs = cyclicConfigs
         }
         return validityInfo
@@ -939,14 +933,29 @@ class LockApi: TTLockHostApi {
         lockData: String,
         callback: (Result<Unit>) -> Unit
     ) {
-        callback.invoke(
-            Result.failure(
-                FlutterError(
-                    code = "NOT_SUPPORTED",
-                    message = "no such method",
-                    details = ""
+        val qrCodeNo = qrCodeNumber.toLongOrNull()
+        if (qrCodeNo == null) {
+            callback.invoke(
+                Result.failure(
+                    lockInvalidParameterError("qrCodeNumber is not a number", qrCodeNumber)
                 )
             )
+            return
+        }
+
+        TTLockClient.getDefault().addQRCode(
+            qrCodeNo,
+            buildValidityInfo(cycleList, startDate, endDate),
+            lockData,
+            object : AddQRCodeCallback {
+                override fun onAddQRCodeSuccess(addedQrCodeNumber: Long) {
+                    callback.invoke(Result.success(Unit))
+                }
+
+                override fun onFail(lockError: LockError) {
+                    callback.invoke(Result.failure(lockErrorToFlutterError(lockError)))
+                }
+            }
         )
     }
 
@@ -958,14 +967,29 @@ class LockApi: TTLockHostApi {
         lockData: String,
         callback: (Result<Unit>) -> Unit
     ) {
-        callback.invoke(
-            Result.failure(
-                FlutterError(
-                    code = "NOT_SUPPORTED",
-                    message = "no such method",
-                    details = ""
+        val qrCodeNo = qrCodeNumber.toLongOrNull()
+        if (qrCodeNo == null) {
+            callback.invoke(
+                Result.failure(
+                    lockInvalidParameterError("qrCodeNumber is not a number", qrCodeNumber)
                 )
             )
+            return
+        }
+
+        TTLockClient.getDefault().modifyQRCodeValidityPeriod(
+            qrCodeNo,
+            buildValidityInfo(cycleList, startDate, endDate),
+            lockData,
+            object : ModifyQRCodeValidityPeriodCallback {
+                override fun onModifyQRCodeValidityPeriodSuccess() {
+                    callback.invoke(Result.success(Unit))
+                }
+
+                override fun onFail(lockError: LockError) {
+                    callback.invoke(Result.failure(lockErrorToFlutterError(lockError)))
+                }
+            }
         )
     }
 
@@ -975,42 +999,67 @@ class LockApi: TTLockHostApi {
         lockData: String,
         callback: (Result<Unit>) -> Unit
     ) {
-        callback.invoke(
-            Result.failure(
-                FlutterError(
-                    code = "NOT_SUPPORTED",
-                    message = "no such method",
-                    details = ""
+        val qrCodeNo = qrCodeNumber.toLongOrNull()
+        if (qrCodeNo == null) {
+            callback.invoke(
+                Result.failure(
+                    lockInvalidParameterError("qrCodeNumber is not a number", qrCodeNumber)
                 )
             )
+            return
+        }
+
+        TTLockClient.getDefault().deleteQRCode(
+            qrCodeNo,
+            endDate,
+            lockData,
+            object : DeleteQRCodeCallback {
+                override fun onDeleteQRCodeSuccess() {
+                    callback.invoke(Result.success(Unit))
+                }
+
+                override fun onFail(lockError: LockError) {
+                    callback.invoke(Result.failure(lockErrorToFlutterError(lockError)))
+                }
+            }
         )
     }
 
     override fun clearAllQrCodes(lockData: String, callback: (Result<Unit>) -> Unit) {
-        callback.invoke(
-            Result.failure(
-                FlutterError(
-                    code = "NOT_SUPPORTED",
-                    message = "no such method",
-                    details = ""
-                )
-            )
-        )
+        TTLockClient.getDefault().clearQRCode(lockData, object : ClearQRCodeCallback {
+            override fun onClearQRCodeSuccess() {
+                callback.invoke(Result.success(Unit))
+            }
+
+            override fun onFail(lockError: LockError) {
+                callback.invoke(Result.failure(lockErrorToFlutterError(lockError)))
+            }
+        })
     }
 
     override fun getAllValidQrCodes(
         lockData: String,
         callback: (Result<List<TTQrCodeModel>>) -> Unit
     ) {
-        callback.invoke(
-            Result.failure(
-                FlutterError(
-                    code = "NOT_SUPPORTED",
-                    message = "no such method",
-                    details = ""
+        TTLockClient.getDefault().getAllValidQRCodes(lockData, object : GetAllValidQRCodesCallback {
+            override fun onGetAllValidQRCodesSuccess(qrCodeListStr: String) {
+                callback.invoke(
+                    Result.success(
+                        parseJsonListMaps(qrCodeListStr).map {
+                            TTQrCodeModel(
+                                qrCodeNumber = mapLongValue(it, "qrCodeNumber").toString(),
+                                startDate = mapLongValue(it, "startDate"),
+                                endDate = mapLongValue(it, "endDate"),
+                            )
+                        }
+                    )
                 )
-            )
-        )
+            }
+
+            override fun onFail(lockError: LockError) {
+                callback.invoke(Result.failure(lockErrorToFlutterError(lockError)))
+            }
+        })
     }
 
     override fun setMotorTorqueLevel(

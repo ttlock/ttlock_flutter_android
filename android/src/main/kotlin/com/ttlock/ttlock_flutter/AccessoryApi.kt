@@ -99,13 +99,18 @@ class AccessoryApi : TTAccessoryHostApi {
     override fun initRemoteKey(
         mac: String,
         lockData: String,
+        connectAddress: String?,
         callback: (Result<TTLockSystemModel>) -> Unit
     ) {
         val bluetoothManager =
             context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val bluetoothAdapter = bluetoothManager.adapter
-        val device = bluetoothAdapter.getRemoteDevice(mac)
+        // R2 须用 connectAddress 建连；逻辑 MAC 仍写到 address 供指令使用
+        val bleAddress = connectAddress?.takeIf { it.isNotEmpty() } ?: mac
+        val device = bluetoothAdapter.getRemoteDevice(bleAddress)
         val remote = Remote(device)
+        remote.address = mac
+        remote.connectAddress = bleAddress
         RemoteClient.getDefault().initialize(remote, lockData, object : com.ttlock.bl.sdk.remote.callback.InitRemoteCallback {
             override fun onInitSuccess(result: com.ttlock.bl.sdk.remote.model.InitRemoteResult) {
                 val systemInfo = result.systemInfo

@@ -1,7 +1,6 @@
 package com.ttlock.ttlock_flutter
 
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.ttlock.bl.sdk.entity.CyclicConfig
 import com.ttlock.bl.sdk.entity.ValidityInfo
 
@@ -57,8 +56,10 @@ object LockStreamParams {
                 return validityInfo
             }
             validityInfo.modeType = ValidityInfo.CYCLIC
-            val type = object : TypeToken<List<CyclicConfig>>() {}
-            val cyclicConfigs: List<CyclicConfig> = gson.fromJson(gson.toJson(list), type.type)
+            val cyclicConfigs: List<CyclicConfig> = gson.fromJson(
+                gson.toJson(list),
+                gsonListType(CyclicConfig::class.java),
+            )
             validityInfo.cyclicConfigs = cyclicConfigs
             return validityInfo
         }
@@ -113,8 +114,10 @@ object KeypadStreamParams {
             }
             validityInfo.modeType = ValidityInfo.CYCLIC
             val gson = Gson()
-            val type = object : TypeToken<List<CyclicConfig>>() {}
-            val cyclicConfigs: List<CyclicConfig> = gson.fromJson(gson.toJson(list), type.type)
+            val cyclicConfigs: List<CyclicConfig> = gson.fromJson(
+                gson.toJson(list),
+                gsonListType(CyclicConfig::class.java),
+            )
             validityInfo.cyclicConfigs = cyclicConfigs
             return validityInfo
         }

@@ -159,6 +159,11 @@ class ScanLockWifiImpl : LockScanWifiStreamHandler {
         })
     }
 
+    override fun onCancel(p0: Any?) {
+        TTLockClient.getDefault().clearAllCallback()
+        super.onCancel(p0)
+    }
+
 }
 
 class AddLockCardImpl : LockAddCardStreamHandler {
@@ -482,6 +487,11 @@ class ScanGatewayWiFiImpl : GatewayGetNearbyWifiStreamHandler {
         })
     }
 
+    override fun onCancel(p0: Any?) {
+        TTLockClient.getDefault().clearAllCallback()
+        super.onCancel(p0)
+    }
+
 }
 
 class ScanRemoteKeyImpl : AccessoryStartScanRemoteKeyStreamHandler {
@@ -503,6 +513,7 @@ class ScanRemoteKeyImpl : AccessoryStartScanRemoteKeyStreamHandler {
                 TTRemoteAccessoryScanModel(
                     name = remote.name,
                     mac = remote.address,
+                    connectAddress = remote.connectAddress,
                     rssi = remote.rssi.toLong(),
                     scanTime = System.currentTimeMillis(),
                     isMultifunctionalKeypad = false,
@@ -539,6 +550,7 @@ class ScanRemoteKeypadImpl : AccessoryStartScanRemoteKeypadStreamHandler {
                     TTRemoteAccessoryScanModel(
                         name = wirelessKeypad.name,
                         mac = wirelessKeypad.address,
+                        connectAddress = wirelessKeypad.address,
                         rssi = wirelessKeypad.rssi.toLong(),
                         scanTime = System.currentTimeMillis(),
                         isMultifunctionalKeypad = false,
@@ -557,6 +569,7 @@ class ScanRemoteKeypadImpl : AccessoryStartScanRemoteKeypadStreamHandler {
                     TTRemoteAccessoryScanModel(
                         name = wirelessKeypad.name,
                         mac = wirelessKeypad.address,
+                        connectAddress = wirelessKeypad.address,
                         rssi = wirelessKeypad.rssi.toLong(),
                         scanTime = System.currentTimeMillis(),
                         isMultifunctionalKeypad = true,
@@ -874,6 +887,7 @@ class ScanDoorSensorImpl : AccessoryStartScanDoorSensorStreamHandler {
                 TTRemoteAccessoryScanModel(
                     name = doorSensor.name,
                     mac = doorSensor.address,
+                    connectAddress = doorSensor.address,
                     rssi = doorSensor.rssi.toLong(),
                     scanTime = System.currentTimeMillis(),
                     isMultifunctionalKeypad = false,
