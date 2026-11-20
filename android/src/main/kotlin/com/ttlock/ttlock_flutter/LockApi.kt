@@ -1586,7 +1586,7 @@ class LockApi: TTLockHostApi {
             callback.invoke(Result.failure(lockInvalidParameterError("port is invalid", port)))
             return
         }
-
+        TTLockClient.getDefault().clearAllCallback()
         TTLockClient.getDefault().configServer(ipValue, portInt, lockData, object : ConfigServerCallback {
             override fun onConfigServerSuccess() {
                 callback.invoke(Result.success(Unit))
