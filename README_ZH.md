@@ -17,6 +17,12 @@ App  →  ttlock_flutter（Dart API）
 
 对外 Dart API 在父插件（`package:ttlock_flutter/ttlock.dart`）。本包负责把 Pigeon Host API 接到 TTLock Android 原生 SDK。
 
+## 固件升级
+
+将 `TTUpgradeHostApi` 与各升级 EventChannel 接到原生 DFU Client。在线版（`main`）支持锁 / 网关（网络 + 固件包）/ 水表 / 电表 / 键盘升级。取消订阅即中止 DFU。约定见父仓库 [README_ZH](https://github.com/ttlock/ttlock_flutter/blob/mix/README_ZH.md)「固件升级」。
+
+因 flatDir AAR 不带 Maven 传递依赖，须额外引入 Nordic DFU（`no.nordicsemi.android:dfu`）。
+
 ## 原生 SDK（本分支：在线版）
 
 | 项 | 值 |
@@ -60,7 +66,8 @@ your_app/android/app/libs/ttlock-release.aar
 |--|------------------|-----------|
 | 场景 | 在线 / 云端 SDK | 本地化（On-Premise） |
 | AAR | `ttlock-release.aar` | `TTLockOnPremise.aar` |
-| 额外 Maven 依赖 | Nordic DFU、OkHttp | 本打包方式通常不需要 |
+| 额外 Maven 依赖 | Nordic DFU、OkHttp、Gson | Nordic DFU、OkHttp、Gson |
+| 升级能力 | 全量 | 仅锁固件包 + 网关固件包 |
 
 ## 权限（宿主 App）
 

@@ -484,6 +484,50 @@ class UpgradeLockImpl : UpgradeLockStreamHandler {
         runUpgradeStart(UpgradeSession.KIND_LOCK, gate.generation) {
             LockDfuClient.getDefault().startDfu(
                 context,
+                lockParam.clientId,
+                lockParam.accessToken,
+                lockParam.lockId.toInt(),
+                lockParam.lockData,
+                lockParam.lockMac,
+                lockCallback(lockParam.lockData, lockParam.lockMac, gate.generation),
+            )
+        }
+    }
+
+    override fun onCancel(p0: Any?) {
+        // cancel 对锁会走 takeLockSession：removeCallbacks 与结束会话同一临界区。
+        gate.cancel { LockDfuClient.getDefault().abortDfu() }
+    }
+}
+
+class UpgradeLockByPackageImpl : UpgradeLockByPackageStreamHandler {
+    var context: Context
+    private val gate = UpgradeListenGate(UpgradeSession.KIND_LOCK)
+
+    constructor(context: Context, messenger: BinaryMessenger) {
+        this.context = context
+        register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeLockByPackage",
+            this,
+        )
+    }
+
+    override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
+        val param = UpgradeStreamParams.lockByPackage
+        if (!gate.begin(
+                sink,
+                param,
+                "请先通过 setUpgradeLockByPackageParam 设置参数后再订阅 upgradeLockByPackage",
+            )
+        ) {
+            return
+        }
+        val lockParam = param ?: return
+        runUpgradeStart(UpgradeSession.KIND_LOCK, gate.generation) {
+            LockDfuClient.getDefault().startDfu(
+                context,
                 lockParam.lockData,
                 lockParam.lockMac,
                 lockParam.firmwarePackage,
@@ -493,7 +537,6 @@ class UpgradeLockImpl : UpgradeLockStreamHandler {
     }
 
     override fun onCancel(p0: Any?) {
-        // cancel 对锁会走 takeLockSession：removeCallbacks 与结束会话同一临界区。
         gate.cancel { LockDfuClient.getDefault().abortDfu() }
     }
 }

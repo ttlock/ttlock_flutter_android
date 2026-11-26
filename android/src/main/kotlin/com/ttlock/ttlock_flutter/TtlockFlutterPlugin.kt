@@ -44,6 +44,7 @@ class TtlockFlutterPlugin: FlutterPlugin, ActivityAware {
   private var accessoryApi: AccessoryApi? = null
   private var upgradeApi: UpgradeApi? = null
   private var upgradeLockImpl: UpgradeLockImpl? = null
+  private var upgradeLockByPackageImpl: UpgradeLockByPackageImpl? = null
   private var upgradeGatewayImpl: UpgradeGatewayImpl? = null
   private var upgradeGatewayByPackageImpl: UpgradeGatewayByPackageImpl? = null
   private var upgradeWaterMeterImpl: UpgradeWaterMeterImpl? = null
@@ -95,6 +96,7 @@ class TtlockFlutterPlugin: FlutterPlugin, ActivityAware {
     accessoryApi?.context = ctx
     upgradeApi?.context = ctx
     upgradeLockImpl?.context = ctx
+    upgradeLockByPackageImpl?.context = ctx
     upgradeGatewayImpl?.context = ctx
     upgradeGatewayByPackageImpl?.context = ctx
     upgradeWaterMeterImpl?.context = ctx
@@ -129,6 +131,7 @@ class TtlockFlutterPlugin: FlutterPlugin, ActivityAware {
     accessoryApi = AccessoryApi(ctx, messenger)
     upgradeApi = UpgradeApi(ctx, messenger)
     upgradeLockImpl = UpgradeLockImpl(ctx, messenger)
+    upgradeLockByPackageImpl = UpgradeLockByPackageImpl(ctx, messenger)
     upgradeGatewayImpl = UpgradeGatewayImpl(ctx, messenger)
     upgradeGatewayByPackageImpl = UpgradeGatewayByPackageImpl(ctx, messenger)
     upgradeWaterMeterImpl = UpgradeWaterMeterImpl(ctx, messenger)

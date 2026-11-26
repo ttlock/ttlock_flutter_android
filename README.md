@@ -17,6 +17,12 @@ App  →  ttlock_flutter (Dart API)
 
 Dart-facing APIs live in the parent plugin (`package:ttlock_flutter/ttlock.dart`). This package wires Pigeon host APIs to the native TTLock Android SDK.
 
+## Firmware upgrade
+
+Wires `TTUpgradeHostApi` + upgrade EventChannels to the native DFU clients. Online (`main`) supports lock / gateway (network + package) / water meter / electric meter / keypad upgrade. Progress streams abort on subscription cancel. See the parent [README](https://github.com/ttlock/ttlock_flutter/blob/mix/README.md) «Firmware upgrade».
+
+Nordic DFU (`no.nordicsemi.android:dfu`) is required because flatDir AARs do not bring Maven transitive deps.
+
 ## Native SDK (this branch: online)
 
 | Item | Value |
@@ -60,7 +66,8 @@ Do not enable both `ttlock-release` and `TTLockOnPremise` in one build unless yo
 |--|----------------------|-----------|
 | Scenario | Online / cloud SDK | On-premise |
 | AAR | `ttlock-release.aar` | `TTLockOnPremise.aar` |
-| Extra Maven deps | Nordic DFU, OkHttp | Usually not required by this packaging |
+| Extra Maven deps | Nordic DFU, OkHttp, Gson | Nordic DFU, OkHttp, Gson |
+| Upgrade APIs | Full set | Lock package + gateway package |
 
 ## Permissions (host app)
 
