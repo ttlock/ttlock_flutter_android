@@ -42,6 +42,16 @@ class TtlockFlutterPlugin: FlutterPlugin, ActivityAware {
   private var lockApi: LockApi? = null
   private var gatewayApi: GatewayApi? = null
   private var accessoryApi: AccessoryApi? = null
+  private var upgradeApi: UpgradeApi? = null
+  private var upgradeLockImpl: UpgradeLockImpl? = null
+  private var upgradeGatewayImpl: UpgradeGatewayImpl? = null
+  private var upgradeGatewayByPackageImpl: UpgradeGatewayByPackageImpl? = null
+  private var upgradeWaterMeterImpl: UpgradeWaterMeterImpl? = null
+  private var upgradeWaterMeterByPackageImpl: UpgradeWaterMeterByPackageImpl? = null
+  private var upgradeElectricMeterImpl: UpgradeElectricMeterImpl? = null
+  private var upgradeElectricMeterByPackageImpl: UpgradeElectricMeterByPackageImpl? = null
+  private var upgradeKeypadImpl: UpgradeKeypadImpl? = null
+  private var upgradeKeypadByPackageImpl: UpgradeKeypadByPackageImpl? = null
 
   private fun activeContext(): Context? = activity ?: applicationContext
 
@@ -83,6 +93,16 @@ class TtlockFlutterPlugin: FlutterPlugin, ActivityAware {
     lockApi?.context = ctx
     gatewayApi?.context = ctx
     accessoryApi?.context = ctx
+    upgradeApi?.context = ctx
+    upgradeLockImpl?.context = ctx
+    upgradeGatewayImpl?.context = ctx
+    upgradeGatewayByPackageImpl?.context = ctx
+    upgradeWaterMeterImpl?.context = ctx
+    upgradeWaterMeterByPackageImpl?.context = ctx
+    upgradeElectricMeterImpl?.context = ctx
+    upgradeElectricMeterByPackageImpl?.context = ctx
+    upgradeKeypadImpl?.context = ctx
+    upgradeKeypadByPackageImpl?.context = ctx
   }
   
   private fun initModules() {
@@ -107,6 +127,16 @@ class TtlockFlutterPlugin: FlutterPlugin, ActivityAware {
     lockApi = LockApi(ctx, messenger)
     gatewayApi = GatewayApi(ctx, messenger)
     accessoryApi = AccessoryApi(ctx, messenger)
+    upgradeApi = UpgradeApi(ctx, messenger)
+    upgradeLockImpl = UpgradeLockImpl(ctx, messenger)
+    upgradeGatewayImpl = UpgradeGatewayImpl(ctx, messenger)
+    upgradeGatewayByPackageImpl = UpgradeGatewayByPackageImpl(ctx, messenger)
+    upgradeWaterMeterImpl = UpgradeWaterMeterImpl(ctx, messenger)
+    upgradeWaterMeterByPackageImpl = UpgradeWaterMeterByPackageImpl(ctx, messenger)
+    upgradeElectricMeterImpl = UpgradeElectricMeterImpl(ctx, messenger)
+    upgradeElectricMeterByPackageImpl = UpgradeElectricMeterByPackageImpl(ctx, messenger)
+    upgradeKeypadImpl = UpgradeKeypadImpl(ctx, messenger)
+    upgradeKeypadByPackageImpl = UpgradeKeypadByPackageImpl(ctx, messenger)
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
