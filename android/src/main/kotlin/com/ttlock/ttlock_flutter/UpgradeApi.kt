@@ -1,20 +1,7 @@
 package com.ttlock.ttlock_flutter
 
 import android.content.Context
-import com.ttlock.bl.sdk.api.LockDfuClient
-import com.ttlock.bl.sdk.gateway.api.GatewayDfuClient
 import io.flutter.plugin.common.BinaryMessenger
-
-/**
- * 与 OHOS [makeNotImplementedError] 对齐：code 为 [TTLockError.FAIL] 数字串，message 为 notImplemented。
- */
-internal fun makeNotImplementedError(operation: String): FlutterError {
-    return FlutterError(
-        TTLockError.FAIL.raw.toString(),
-        "notImplemented",
-        "$operation is not implemented on premise",
-    )
-}
 
 class UpgradeApi : TTUpgradeHostApi {
     var context: Context
@@ -29,7 +16,7 @@ class UpgradeApi : TTUpgradeHostApi {
     }
 
     override fun setUpgradeGatewayParam(param: TTUpgradeGatewayParam) {
-        throw makeNotImplementedError("setUpgradeGatewayParam")
+        UpgradeStreamParams.gateway = param
     }
 
     override fun setUpgradeGatewayByPackageParam(param: TTUpgradeGatewayByPackageParam) {
@@ -37,54 +24,26 @@ class UpgradeApi : TTUpgradeHostApi {
     }
 
     override fun setUpgradeWaterMeterParam(param: TTUpgradeWaterMeterParam) {
-        throw makeNotImplementedError("setUpgradeWaterMeterParam")
+        UpgradeStreamParams.waterMeter = param
     }
 
     override fun setUpgradeWaterMeterByPackageParam(param: TTUpgradeWaterMeterByPackageParam) {
-        throw makeNotImplementedError("setUpgradeWaterMeterByPackageParam")
+        UpgradeStreamParams.waterMeterByPackage = param
     }
 
     override fun setUpgradeElectricMeterParam(param: TTUpgradeElectricMeterParam) {
-        throw makeNotImplementedError("setUpgradeElectricMeterParam")
+        UpgradeStreamParams.electricMeter = param
     }
 
     override fun setUpgradeElectricMeterByPackageParam(param: TTUpgradeElectricMeterByPackageParam) {
-        throw makeNotImplementedError("setUpgradeElectricMeterByPackageParam")
+        UpgradeStreamParams.electricMeterByPackage = param
     }
 
     override fun setUpgradeKeypadParam(param: TTUpgradeKeypadParam) {
-        throw makeNotImplementedError("setUpgradeKeypadParam")
+        UpgradeStreamParams.keypad = param
     }
 
     override fun setUpgradeKeypadByPackageParam(param: TTUpgradeKeypadByPackageParam) {
-        throw makeNotImplementedError("setUpgradeKeypadByPackageParam")
-    }
-
-    override fun stopUpgradeLock() {
-        val sink = takeLockSession()
-        LockDfuClient.getDefault().abortDfu()
-        sink?.endOfStream()
-    }
-
-    override fun stopUpgradeGateway() {
-        clearGatewayCallbackGeneration()
-        val sink = UpgradeSession.take(UpgradeSession.KIND_GATEWAY)
-        GatewayDfuClient.getDefault().abortDfu()
-        if (sink != null) {
-            UpgradeSession.cacheGatewayMac = ""
-            sink.endOfStream()
-        }
-    }
-
-    override fun stopUpgradeWaterMeter() {
-        throw makeNotImplementedError("stopUpgradeWaterMeter")
-    }
-
-    override fun stopUpgradeElectricMeter() {
-        throw makeNotImplementedError("stopUpgradeElectricMeter")
-    }
-
-    override fun stopUpgradeKeypad() {
-        throw makeNotImplementedError("stopUpgradeKeypad")
+        UpgradeStreamParams.keypadByPackage = param
     }
 }
