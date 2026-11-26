@@ -9417,16 +9417,6 @@ interface TTUpgradeHostApi {
    * [param] 键盘固件包升级参数。
    */
   fun setUpgradeKeypadByPackageParam(param: TTUpgradeKeypadByPackageParam)
-  /** 停止锁升级。 */
-  fun stopUpgradeLock()
-  /** 停止网关升级（网络 DFU 与固件包共用）。 */
-  fun stopUpgradeGateway()
-  /** 停止水表升级。不得 abort 锁或网关 DFU。 */
-  fun stopUpgradeWaterMeter()
-  /** 停止电表升级。不得 abort 锁或网关 DFU。 */
-  fun stopUpgradeElectricMeter()
-  /** 停止键盘升级。不得 abort 锁或网关 DFU。 */
-  fun stopUpgradeKeypad()
 
   companion object {
     /** The codec used by TTUpgradeHostApi. */
@@ -9589,86 +9579,6 @@ interface TTUpgradeHostApi {
             val paramArg = args[0] as TTUpgradeKeypadByPackageParam
             val wrapped: List<Any?> = try {
               api.setUpgradeKeypadByPackageParam(paramArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              MessagesPigeonUtils.wrapError(exception)
-            }
-            reply.reply(wrapped)
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeLock$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.stopUpgradeLock()
-              listOf(null)
-            } catch (exception: Throwable) {
-              MessagesPigeonUtils.wrapError(exception)
-            }
-            reply.reply(wrapped)
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeGateway$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.stopUpgradeGateway()
-              listOf(null)
-            } catch (exception: Throwable) {
-              MessagesPigeonUtils.wrapError(exception)
-            }
-            reply.reply(wrapped)
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeWaterMeter$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.stopUpgradeWaterMeter()
-              listOf(null)
-            } catch (exception: Throwable) {
-              MessagesPigeonUtils.wrapError(exception)
-            }
-            reply.reply(wrapped)
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeElectricMeter$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.stopUpgradeElectricMeter()
-              listOf(null)
-            } catch (exception: Throwable) {
-              MessagesPigeonUtils.wrapError(exception)
-            }
-            reply.reply(wrapped)
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeKeypad$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.stopUpgradeKeypad()
               listOf(null)
             } catch (exception: Throwable) {
               MessagesPigeonUtils.wrapError(exception)
