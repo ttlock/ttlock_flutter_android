@@ -1268,6 +1268,82 @@ enum class TTPalmVeinErrorCode(val raw: Int) {
   }
 }
 
+/** 升级进度状态。按名称映射，禁止用 iOS `UpgradeOpration` raw 值当下标。 */
+enum class TTUpgradeStatus(val raw: Int) {
+  /** 准备中。 */
+  PREPARING(0),
+  /** 升级中。 */
+  UPGRADING(1),
+  /** 恢复中。 */
+  RECOVERING(2);
+
+  companion object {
+    fun ofRaw(raw: Int): TTUpgradeStatus? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/** 升级流阶段。`success` 对应完成，不是 [TTUpgradeStatus]。 */
+enum class TTUpgradePhase(val raw: Int) {
+  /** 进度更新，见 [TTUpgradeEvent.status] / [TTUpgradeEvent.progress]。 */
+  PROGRESS(0),
+  /** 升级成功。锁升级时 [TTUpgradeEvent.lockData] 可能有值。 */
+  SUCCESS(1);
+
+  companion object {
+    fun ofRaw(raw: Int): TTUpgradePhase? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/** 网关网络 DFU 类型。 */
+enum class TTDfuType(val raw: Int) {
+  /** 网络升级。 */
+  NET(0),
+  /** 蓝牙升级。 */
+  BLUETOOTH(1);
+
+  companion object {
+    fun ofRaw(raw: Int): TTDfuType? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/** 升级错误码。`success` 仅为占位，对齐旧 ordinal，业务失败不用。 */
+enum class TTLockUpgradeError(val raw: Int) {
+  /** 占位成功，业务失败不用。 */
+  SUCCESS(0),
+  /** 外设蓝牙关闭。 */
+  PERIPHERAL_POWERED_OFF(1),
+  /** 连接超时。 */
+  CONNECT_TIMEOUT(2),
+  /** 网络失败。 */
+  NET_FAIL(3),
+  /** 无需升级。 */
+  NO_NEED_UPGRADE(4),
+  /** 未知升级版本。 */
+  UNKNOWN_UPGRADE_VERSION(5),
+  /** 进入升级状态失败。 */
+  ENTER_UPGRADE_STATE(6),
+  /** 锁升级失败。 */
+  UPGRADE_LOCK_FAIL(7),
+  /** 准备阶段错误。 */
+  PREPARING_ERROR(8),
+  /** 读取特征值失败。 */
+  GET_SPECIAL_VALUE_ERROR(9),
+  /** 升级失败。 */
+  UPGRADE_FAIL(10);
+
+  companion object {
+    fun ofRaw(raw: Int): TTLockUpgradeError? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
 /**
  * 锁版本信息。
  *
@@ -2593,8 +2669,7 @@ data class TTRemoteAccessoryScanModel (
   /**
    * BLE 连接地址。
    *
-   * R2 遥控器初始化连接须使用此字段，不可用 [mac] 替代；
-   * R1 / 键盘 / 门磁等可与 [mac] 相同，或为空（回退使用 [mac]）。
+   * R2 遥控器初始化连接须使用此字段替代[mac]，其他设备不使用此字段；
    */
   val connectAddress: String? = null,
   /** 蓝牙信号强度。 */
@@ -3634,6 +3709,559 @@ data class AddPalmVeinEvent (
     return result
   }
 }
+
+/**
+ * 固件升级进度事件。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeEvent (
+  /** 流阶段。 */
+  val phase: TTUpgradePhase,
+  /** 进度状态。仅 [TTUpgradePhase.progress] 时有值。 */
+  val status: TTUpgradeStatus? = null,
+  /** 进度百分比，0–100。 */
+  val progress: Long? = null,
+  /** 锁升级成功后刷新得到的锁凭证。仅锁升级 success 时有值。 */
+  val lockData: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeEvent {
+      val phase = pigeonVar_list[0] as TTUpgradePhase
+      val status = pigeonVar_list[1] as TTUpgradeStatus?
+      val progress = pigeonVar_list[2] as Long?
+      val lockData = pigeonVar_list[3] as String?
+      return TTUpgradeEvent(phase, status, progress, lockData)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      phase,
+      status,
+      progress,
+      lockData,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeEvent
+    return MessagesPigeonUtils.deepEquals(this.phase, other.phase) && MessagesPigeonUtils.deepEquals(this.status, other.status) && MessagesPigeonUtils.deepEquals(this.progress, other.progress) && MessagesPigeonUtils.deepEquals(this.lockData, other.lockData)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.phase)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.status)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.progress)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.lockData)
+    return result
+  }
+}
+
+/**
+ * [TTEventChannelApi.upgradeLock] 订阅前通过 [TTUpgradeHostApi.setUpgradeLockParam] 写入。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeLockParam (
+  /** 锁蓝牙 MAC 地址。 */
+  val lockMac: String,
+  /** 锁凭证。 */
+  val lockData: String,
+  /** 固件包，不透明字符串（通常为服务端下发的 Base64），不是本地文件路径。 */
+  val firmwarePackage: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeLockParam {
+      val lockMac = pigeonVar_list[0] as String
+      val lockData = pigeonVar_list[1] as String
+      val firmwarePackage = pigeonVar_list[2] as String
+      return TTUpgradeLockParam(lockMac, lockData, firmwarePackage)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      lockMac,
+      lockData,
+      firmwarePackage,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeLockParam
+    return MessagesPigeonUtils.deepEquals(this.lockMac, other.lockMac) && MessagesPigeonUtils.deepEquals(this.lockData, other.lockData) && MessagesPigeonUtils.deepEquals(this.firmwarePackage, other.firmwarePackage)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.lockMac)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.lockData)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.firmwarePackage)
+    return result
+  }
+}
+
+/**
+ * [TTEventChannelApi.upgradeGateway] 订阅前通过 [TTUpgradeHostApi.setUpgradeGatewayParam] 写入。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeGatewayParam (
+  /** 网关 DFU 类型。 */
+  val dfuType: TTDfuType,
+  /** 开放平台 clientId。 */
+  val clientId: String,
+  /** 访问令牌。 */
+  val accessToken: String,
+  /** 网关 ID。 */
+  val gatewayId: Long,
+  /** 网关 MAC 地址。 */
+  val gatewayMac: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeGatewayParam {
+      val dfuType = pigeonVar_list[0] as TTDfuType
+      val clientId = pigeonVar_list[1] as String
+      val accessToken = pigeonVar_list[2] as String
+      val gatewayId = pigeonVar_list[3] as Long
+      val gatewayMac = pigeonVar_list[4] as String
+      return TTUpgradeGatewayParam(dfuType, clientId, accessToken, gatewayId, gatewayMac)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      dfuType,
+      clientId,
+      accessToken,
+      gatewayId,
+      gatewayMac,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeGatewayParam
+    return MessagesPigeonUtils.deepEquals(this.dfuType, other.dfuType) && MessagesPigeonUtils.deepEquals(this.clientId, other.clientId) && MessagesPigeonUtils.deepEquals(this.accessToken, other.accessToken) && MessagesPigeonUtils.deepEquals(this.gatewayId, other.gatewayId) && MessagesPigeonUtils.deepEquals(this.gatewayMac, other.gatewayMac)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.dfuType)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.clientId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.accessToken)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.gatewayId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.gatewayMac)
+    return result
+  }
+}
+
+/**
+ * [TTEventChannelApi.upgradeGatewayByPackage] 订阅前写入。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeGatewayByPackageParam (
+  /** 固件包，不透明字符串（通常为服务端下发的 Base64），不是本地文件路径。 */
+  val firmwarePackage: String,
+  /** 网关 MAC 地址。 */
+  val gatewayMac: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeGatewayByPackageParam {
+      val firmwarePackage = pigeonVar_list[0] as String
+      val gatewayMac = pigeonVar_list[1] as String
+      return TTUpgradeGatewayByPackageParam(firmwarePackage, gatewayMac)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      firmwarePackage,
+      gatewayMac,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeGatewayByPackageParam
+    return MessagesPigeonUtils.deepEquals(this.firmwarePackage, other.firmwarePackage) && MessagesPigeonUtils.deepEquals(this.gatewayMac, other.gatewayMac)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.firmwarePackage)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.gatewayMac)
+    return result
+  }
+}
+
+/**
+ * [TTEventChannelApi.upgradeWaterMeter] 订阅前写入。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeWaterMeterParam (
+  /** 开放平台 clientId。 */
+  val clientId: String,
+  /** 访问令牌。 */
+  val accessToken: String,
+  /** 水表设备 ID。 */
+  val deviceId: Long,
+  /** 水表 MAC 地址。 */
+  val deviceMac: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeWaterMeterParam {
+      val clientId = pigeonVar_list[0] as String
+      val accessToken = pigeonVar_list[1] as String
+      val deviceId = pigeonVar_list[2] as Long
+      val deviceMac = pigeonVar_list[3] as String
+      return TTUpgradeWaterMeterParam(clientId, accessToken, deviceId, deviceMac)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      clientId,
+      accessToken,
+      deviceId,
+      deviceMac,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeWaterMeterParam
+    return MessagesPigeonUtils.deepEquals(this.clientId, other.clientId) && MessagesPigeonUtils.deepEquals(this.accessToken, other.accessToken) && MessagesPigeonUtils.deepEquals(this.deviceId, other.deviceId) && MessagesPigeonUtils.deepEquals(this.deviceMac, other.deviceMac)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.clientId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.accessToken)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceMac)
+    return result
+  }
+}
+
+/**
+ * [TTEventChannelApi.upgradeWaterMeterByPackage] 订阅前写入。
+ *
+ * 调用方须已对该水表调用过 [TTAccessoryHostApi.waterMeterSetClientParam]。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeWaterMeterByPackageParam (
+  /** 水表设备 ID。 */
+  val deviceId: Long,
+  /** 水表 MAC 地址。 */
+  val deviceMac: String,
+  /** 固件包，不透明字符串（通常为服务端下发的 Base64），不是本地文件路径。 */
+  val firmwarePackage: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeWaterMeterByPackageParam {
+      val deviceId = pigeonVar_list[0] as Long
+      val deviceMac = pigeonVar_list[1] as String
+      val firmwarePackage = pigeonVar_list[2] as String
+      return TTUpgradeWaterMeterByPackageParam(deviceId, deviceMac, firmwarePackage)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      deviceId,
+      deviceMac,
+      firmwarePackage,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeWaterMeterByPackageParam
+    return MessagesPigeonUtils.deepEquals(this.deviceId, other.deviceId) && MessagesPigeonUtils.deepEquals(this.deviceMac, other.deviceMac) && MessagesPigeonUtils.deepEquals(this.firmwarePackage, other.firmwarePackage)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceMac)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.firmwarePackage)
+    return result
+  }
+}
+
+/**
+ * [TTEventChannelApi.upgradeElectricMeter] 订阅前写入。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeElectricMeterParam (
+  /** 开放平台 clientId。 */
+  val clientId: String,
+  /** 访问令牌。 */
+  val accessToken: String,
+  /** 电表设备 ID。 */
+  val deviceId: Long,
+  /** 电表 MAC 地址。 */
+  val deviceMac: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeElectricMeterParam {
+      val clientId = pigeonVar_list[0] as String
+      val accessToken = pigeonVar_list[1] as String
+      val deviceId = pigeonVar_list[2] as Long
+      val deviceMac = pigeonVar_list[3] as String
+      return TTUpgradeElectricMeterParam(clientId, accessToken, deviceId, deviceMac)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      clientId,
+      accessToken,
+      deviceId,
+      deviceMac,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeElectricMeterParam
+    return MessagesPigeonUtils.deepEquals(this.clientId, other.clientId) && MessagesPigeonUtils.deepEquals(this.accessToken, other.accessToken) && MessagesPigeonUtils.deepEquals(this.deviceId, other.deviceId) && MessagesPigeonUtils.deepEquals(this.deviceMac, other.deviceMac)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.clientId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.accessToken)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceMac)
+    return result
+  }
+}
+
+/**
+ * [TTEventChannelApi.upgradeElectricMeterByPackage] 订阅前写入。
+ *
+ * 调用方须已对该电表调用过 [TTAccessoryHostApi.electricMeterSetClientParam]。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeElectricMeterByPackageParam (
+  /** 电表设备 ID。 */
+  val deviceId: Long,
+  /** 电表 MAC 地址。 */
+  val deviceMac: String,
+  /** 固件包，不透明字符串（通常为服务端下发的 Base64），不是本地文件路径。 */
+  val firmwarePackage: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeElectricMeterByPackageParam {
+      val deviceId = pigeonVar_list[0] as Long
+      val deviceMac = pigeonVar_list[1] as String
+      val firmwarePackage = pigeonVar_list[2] as String
+      return TTUpgradeElectricMeterByPackageParam(deviceId, deviceMac, firmwarePackage)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      deviceId,
+      deviceMac,
+      firmwarePackage,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeElectricMeterByPackageParam
+    return MessagesPigeonUtils.deepEquals(this.deviceId, other.deviceId) && MessagesPigeonUtils.deepEquals(this.deviceMac, other.deviceMac) && MessagesPigeonUtils.deepEquals(this.firmwarePackage, other.firmwarePackage)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceMac)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.firmwarePackage)
+    return result
+  }
+}
+
+/**
+ * [TTEventChannelApi.upgradeKeypad] 订阅前写入。
+ *
+ * [lockData] / [slotNumber] / [featureValue] 可选，缺省按空串 / 0 处理。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeKeypadParam (
+  /** 开放平台 clientId。 */
+  val clientId: String,
+  /** 访问令牌。 */
+  val accessToken: String,
+  /** 键盘设备 ID。 */
+  val deviceId: Long,
+  /** 键盘 MAC 地址。 */
+  val deviceMac: String,
+  /** 关联锁凭证。缺省空串。 */
+  val lockData: String? = null,
+  /** 槽位号。缺省 0。 */
+  val slotNumber: Long? = null,
+  /** 特征值。缺省空串。 */
+  val featureValue: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeKeypadParam {
+      val clientId = pigeonVar_list[0] as String
+      val accessToken = pigeonVar_list[1] as String
+      val deviceId = pigeonVar_list[2] as Long
+      val deviceMac = pigeonVar_list[3] as String
+      val lockData = pigeonVar_list[4] as String?
+      val slotNumber = pigeonVar_list[5] as Long?
+      val featureValue = pigeonVar_list[6] as String?
+      return TTUpgradeKeypadParam(clientId, accessToken, deviceId, deviceMac, lockData, slotNumber, featureValue)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      clientId,
+      accessToken,
+      deviceId,
+      deviceMac,
+      lockData,
+      slotNumber,
+      featureValue,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeKeypadParam
+    return MessagesPigeonUtils.deepEquals(this.clientId, other.clientId) && MessagesPigeonUtils.deepEquals(this.accessToken, other.accessToken) && MessagesPigeonUtils.deepEquals(this.deviceId, other.deviceId) && MessagesPigeonUtils.deepEquals(this.deviceMac, other.deviceMac) && MessagesPigeonUtils.deepEquals(this.lockData, other.lockData) && MessagesPigeonUtils.deepEquals(this.slotNumber, other.slotNumber) && MessagesPigeonUtils.deepEquals(this.featureValue, other.featureValue)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.clientId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.accessToken)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceMac)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.lockData)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.slotNumber)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.featureValue)
+    return result
+  }
+}
+
+/**
+ * [TTEventChannelApi.upgradeKeypadByPackage] 订阅前写入。
+ *
+ * [lockData] / [slotNumber] / [featureValue] 可选，缺省按空串 / 0 处理。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class TTUpgradeKeypadByPackageParam (
+  /** 键盘设备 ID。 */
+  val deviceId: Long,
+  /** 键盘 MAC 地址。 */
+  val deviceMac: String,
+  /** 固件包，不透明字符串（通常为服务端下发的 Base64），不是本地文件路径。 */
+  val firmwarePackage: String,
+  /** 关联锁凭证。缺省空串。 */
+  val lockData: String? = null,
+  /** 槽位号。缺省 0。 */
+  val slotNumber: Long? = null,
+  /** 特征值。缺省空串。 */
+  val featureValue: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): TTUpgradeKeypadByPackageParam {
+      val deviceId = pigeonVar_list[0] as Long
+      val deviceMac = pigeonVar_list[1] as String
+      val firmwarePackage = pigeonVar_list[2] as String
+      val lockData = pigeonVar_list[3] as String?
+      val slotNumber = pigeonVar_list[4] as Long?
+      val featureValue = pigeonVar_list[5] as String?
+      return TTUpgradeKeypadByPackageParam(deviceId, deviceMac, firmwarePackage, lockData, slotNumber, featureValue)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      deviceId,
+      deviceMac,
+      firmwarePackage,
+      lockData,
+      slotNumber,
+      featureValue,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as TTUpgradeKeypadByPackageParam
+    return MessagesPigeonUtils.deepEquals(this.deviceId, other.deviceId) && MessagesPigeonUtils.deepEquals(this.deviceMac, other.deviceMac) && MessagesPigeonUtils.deepEquals(this.firmwarePackage, other.firmwarePackage) && MessagesPigeonUtils.deepEquals(this.lockData, other.lockData) && MessagesPigeonUtils.deepEquals(this.slotNumber, other.slotNumber) && MessagesPigeonUtils.deepEquals(this.featureValue, other.featureValue)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.deviceMac)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.firmwarePackage)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.lockData)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.slotNumber)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.featureValue)
+    return result
+  }
+}
 private open class MessagesPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -3823,213 +4451,283 @@ private open class MessagesPigeonCodec : StandardMessageCodec() {
         }
       }
       166.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          TTLockVersion.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          TTUpgradeStatus.ofRaw(it.toInt())
         }
       }
       167.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          TTLockInitParams.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          TTUpgradePhase.ofRaw(it.toInt())
         }
       }
       168.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          TTGatewayInitParams.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          TTDfuType.ofRaw(it.toInt())
         }
       }
       169.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          TTIpSetting.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          TTLockUpgradeError.ofRaw(it.toInt())
         }
       }
       170.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTCycleModel.fromList(it)
+          TTLockVersion.fromList(it)
         }
       }
       171.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTLockScanWifiEventParam.fromList(it)
+          TTLockInitParams.fromList(it)
         }
       }
       172.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTLockCredentialEventParam.fromList(it)
+          TTGatewayInitParams.fromList(it)
         }
       }
       173.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTKeypadCredentialEventParam.fromList(it)
+          TTIpSetting.fromList(it)
         }
       }
       174.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ControlLockResult.fromList(it)
+          TTCycleModel.fromList(it)
         }
       }
       175.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          AutoLockingTime.fromList(it)
+          TTLockScanWifiEventParam.fromList(it)
         }
       }
       176.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTWifiInfoModel.fromList(it)
+          TTLockCredentialEventParam.fromList(it)
         }
       }
       177.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraLockWifiResult.fromList(it)
+          TTKeypadCredentialEventParam.fromList(it)
         }
       }
       178.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTLockSystemModel.fromList(it)
+          ControlLockResult.fromList(it)
         }
       }
       179.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          AccessoryElectricQuantityResult.fromList(it)
+          AutoLockingTime.fromList(it)
         }
       }
       180.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTPassageModeModel.fromList(it)
+          TTWifiInfoModel.fromList(it)
         }
       }
       181.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTLockScanModel.fromList(it)
+          CameraLockWifiResult.fromList(it)
         }
       }
       182.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTPasscodeModel.fromList(it)
+          TTLockSystemModel.fromList(it)
         }
       }
       183.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTICCardModel.fromList(it)
+          AccessoryElectricQuantityResult.fromList(it)
         }
       }
       184.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTFingerprintModel.fromList(it)
+          TTPassageModeModel.fromList(it)
         }
       }
       185.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTPalmVeinModel.fromList(it)
+          TTLockScanModel.fromList(it)
         }
       }
       186.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTQrCodeModel.fromList(it)
+          TTPasscodeModel.fromList(it)
         }
       }
       187.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTGatewayScanModel.fromList(it)
+          TTICCardModel.fromList(it)
         }
       }
       188.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          GatewayDeviceInfo.fromList(it)
+          TTFingerprintModel.fromList(it)
         }
       }
       189.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTRemoteAccessoryScanModel.fromList(it)
+          TTPalmVeinModel.fromList(it)
         }
       }
       190.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTStandaloneDoorSensorInitParams.fromList(it)
+          TTQrCodeModel.fromList(it)
         }
       }
       191.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTStandaloneDoorSensorScanModel.fromList(it)
+          TTGatewayScanModel.fromList(it)
         }
       }
       192.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTStandaloneDoorSensorInfo.fromList(it)
+          GatewayDeviceInfo.fromList(it)
         }
       }
       193.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTMeterScanModel.fromList(it)
+          TTRemoteAccessoryScanModel.fromList(it)
         }
       }
       194.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTWaterMeterInitResult.fromList(it)
+          TTStandaloneDoorSensorInitParams.fromList(it)
         }
       }
       195.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTElectricMeterInitResult.fromList(it)
+          TTStandaloneDoorSensorScanModel.fromList(it)
         }
       }
       196.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTWifiScanResult.fromList(it)
+          TTStandaloneDoorSensorInfo.fromList(it)
         }
       }
       197.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTWifiScanEntry.fromList(it)
+          TTMeterScanModel.fromList(it)
         }
       }
       198.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          RemoteKeypadInitResult.fromList(it)
+          TTWaterMeterInitResult.fromList(it)
         }
       }
       199.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          MultifunctionalKeypadInitResult.fromList(it)
+          TTElectricMeterInitResult.fromList(it)
         }
       }
       200.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          WaterMeterDeviceInfo.fromList(it)
+          TTWifiScanResult.fromList(it)
         }
       }
       201.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ElectricMeterDeviceInfo.fromList(it)
+          TTWifiScanEntry.fromList(it)
         }
       }
       202.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTWaterMeterInitParam.fromList(it)
+          RemoteKeypadInitResult.fromList(it)
         }
       }
       203.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          TTElectricMeterInitParam.fromList(it)
+          MultifunctionalKeypadInitResult.fromList(it)
         }
       }
       204.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          AddCardEvent.fromList(it)
+          WaterMeterDeviceInfo.fromList(it)
         }
       }
       205.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          AddFingerprintEvent.fromList(it)
+          ElectricMeterDeviceInfo.fromList(it)
         }
       }
       206.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          AddFaceEvent.fromList(it)
+          TTWaterMeterInitParam.fromList(it)
         }
       }
       207.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
+          TTElectricMeterInitParam.fromList(it)
+        }
+      }
+      208.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          AddCardEvent.fromList(it)
+        }
+      }
+      209.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          AddFingerprintEvent.fromList(it)
+        }
+      }
+      210.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          AddFaceEvent.fromList(it)
+        }
+      }
+      211.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
           AddPalmVeinEvent.fromList(it)
+        }
+      }
+      212.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeEvent.fromList(it)
+        }
+      }
+      213.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeLockParam.fromList(it)
+        }
+      }
+      214.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeGatewayParam.fromList(it)
+        }
+      }
+      215.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeGatewayByPackageParam.fromList(it)
+        }
+      }
+      216.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeWaterMeterParam.fromList(it)
+        }
+      }
+      217.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeWaterMeterByPackageParam.fromList(it)
+        }
+      }
+      218.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeElectricMeterParam.fromList(it)
+        }
+      }
+      219.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeElectricMeterByPackageParam.fromList(it)
+        }
+      }
+      220.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeKeypadParam.fromList(it)
+        }
+      }
+      221.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          TTUpgradeKeypadByPackageParam.fromList(it)
         }
       }
       else -> super.readValueOfType(type, buffer)
@@ -4185,172 +4883,228 @@ private open class MessagesPigeonCodec : StandardMessageCodec() {
         stream.write(165)
         writeValue(stream, value.raw.toLong())
       }
-      is TTLockVersion -> {
+      is TTUpgradeStatus -> {
         stream.write(166)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is TTLockInitParams -> {
+      is TTUpgradePhase -> {
         stream.write(167)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is TTGatewayInitParams -> {
+      is TTDfuType -> {
         stream.write(168)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is TTIpSetting -> {
+      is TTLockUpgradeError -> {
         stream.write(169)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is TTCycleModel -> {
+      is TTLockVersion -> {
         stream.write(170)
         writeValue(stream, value.toList())
       }
-      is TTLockScanWifiEventParam -> {
+      is TTLockInitParams -> {
         stream.write(171)
         writeValue(stream, value.toList())
       }
-      is TTLockCredentialEventParam -> {
+      is TTGatewayInitParams -> {
         stream.write(172)
         writeValue(stream, value.toList())
       }
-      is TTKeypadCredentialEventParam -> {
+      is TTIpSetting -> {
         stream.write(173)
         writeValue(stream, value.toList())
       }
-      is ControlLockResult -> {
+      is TTCycleModel -> {
         stream.write(174)
         writeValue(stream, value.toList())
       }
-      is AutoLockingTime -> {
+      is TTLockScanWifiEventParam -> {
         stream.write(175)
         writeValue(stream, value.toList())
       }
-      is TTWifiInfoModel -> {
+      is TTLockCredentialEventParam -> {
         stream.write(176)
         writeValue(stream, value.toList())
       }
-      is CameraLockWifiResult -> {
+      is TTKeypadCredentialEventParam -> {
         stream.write(177)
         writeValue(stream, value.toList())
       }
-      is TTLockSystemModel -> {
+      is ControlLockResult -> {
         stream.write(178)
         writeValue(stream, value.toList())
       }
-      is AccessoryElectricQuantityResult -> {
+      is AutoLockingTime -> {
         stream.write(179)
         writeValue(stream, value.toList())
       }
-      is TTPassageModeModel -> {
+      is TTWifiInfoModel -> {
         stream.write(180)
         writeValue(stream, value.toList())
       }
-      is TTLockScanModel -> {
+      is CameraLockWifiResult -> {
         stream.write(181)
         writeValue(stream, value.toList())
       }
-      is TTPasscodeModel -> {
+      is TTLockSystemModel -> {
         stream.write(182)
         writeValue(stream, value.toList())
       }
-      is TTICCardModel -> {
+      is AccessoryElectricQuantityResult -> {
         stream.write(183)
         writeValue(stream, value.toList())
       }
-      is TTFingerprintModel -> {
+      is TTPassageModeModel -> {
         stream.write(184)
         writeValue(stream, value.toList())
       }
-      is TTPalmVeinModel -> {
+      is TTLockScanModel -> {
         stream.write(185)
         writeValue(stream, value.toList())
       }
-      is TTQrCodeModel -> {
+      is TTPasscodeModel -> {
         stream.write(186)
         writeValue(stream, value.toList())
       }
-      is TTGatewayScanModel -> {
+      is TTICCardModel -> {
         stream.write(187)
         writeValue(stream, value.toList())
       }
-      is GatewayDeviceInfo -> {
+      is TTFingerprintModel -> {
         stream.write(188)
         writeValue(stream, value.toList())
       }
-      is TTRemoteAccessoryScanModel -> {
+      is TTPalmVeinModel -> {
         stream.write(189)
         writeValue(stream, value.toList())
       }
-      is TTStandaloneDoorSensorInitParams -> {
+      is TTQrCodeModel -> {
         stream.write(190)
         writeValue(stream, value.toList())
       }
-      is TTStandaloneDoorSensorScanModel -> {
+      is TTGatewayScanModel -> {
         stream.write(191)
         writeValue(stream, value.toList())
       }
-      is TTStandaloneDoorSensorInfo -> {
+      is GatewayDeviceInfo -> {
         stream.write(192)
         writeValue(stream, value.toList())
       }
-      is TTMeterScanModel -> {
+      is TTRemoteAccessoryScanModel -> {
         stream.write(193)
         writeValue(stream, value.toList())
       }
-      is TTWaterMeterInitResult -> {
+      is TTStandaloneDoorSensorInitParams -> {
         stream.write(194)
         writeValue(stream, value.toList())
       }
-      is TTElectricMeterInitResult -> {
+      is TTStandaloneDoorSensorScanModel -> {
         stream.write(195)
         writeValue(stream, value.toList())
       }
-      is TTWifiScanResult -> {
+      is TTStandaloneDoorSensorInfo -> {
         stream.write(196)
         writeValue(stream, value.toList())
       }
-      is TTWifiScanEntry -> {
+      is TTMeterScanModel -> {
         stream.write(197)
         writeValue(stream, value.toList())
       }
-      is RemoteKeypadInitResult -> {
+      is TTWaterMeterInitResult -> {
         stream.write(198)
         writeValue(stream, value.toList())
       }
-      is MultifunctionalKeypadInitResult -> {
+      is TTElectricMeterInitResult -> {
         stream.write(199)
         writeValue(stream, value.toList())
       }
-      is WaterMeterDeviceInfo -> {
+      is TTWifiScanResult -> {
         stream.write(200)
         writeValue(stream, value.toList())
       }
-      is ElectricMeterDeviceInfo -> {
+      is TTWifiScanEntry -> {
         stream.write(201)
         writeValue(stream, value.toList())
       }
-      is TTWaterMeterInitParam -> {
+      is RemoteKeypadInitResult -> {
         stream.write(202)
         writeValue(stream, value.toList())
       }
-      is TTElectricMeterInitParam -> {
+      is MultifunctionalKeypadInitResult -> {
         stream.write(203)
         writeValue(stream, value.toList())
       }
-      is AddCardEvent -> {
+      is WaterMeterDeviceInfo -> {
         stream.write(204)
         writeValue(stream, value.toList())
       }
-      is AddFingerprintEvent -> {
+      is ElectricMeterDeviceInfo -> {
         stream.write(205)
         writeValue(stream, value.toList())
       }
-      is AddFaceEvent -> {
+      is TTWaterMeterInitParam -> {
         stream.write(206)
         writeValue(stream, value.toList())
       }
-      is AddPalmVeinEvent -> {
+      is TTElectricMeterInitParam -> {
         stream.write(207)
+        writeValue(stream, value.toList())
+      }
+      is AddCardEvent -> {
+        stream.write(208)
+        writeValue(stream, value.toList())
+      }
+      is AddFingerprintEvent -> {
+        stream.write(209)
+        writeValue(stream, value.toList())
+      }
+      is AddFaceEvent -> {
+        stream.write(210)
+        writeValue(stream, value.toList())
+      }
+      is AddPalmVeinEvent -> {
+        stream.write(211)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeEvent -> {
+        stream.write(212)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeLockParam -> {
+        stream.write(213)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeGatewayParam -> {
+        stream.write(214)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeGatewayByPackageParam -> {
+        stream.write(215)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeWaterMeterParam -> {
+        stream.write(216)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeWaterMeterByPackageParam -> {
+        stream.write(217)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeElectricMeterParam -> {
+        stream.write(218)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeElectricMeterByPackageParam -> {
+        stream.write(219)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeKeypadParam -> {
+        stream.write(220)
+        writeValue(stream, value.toList())
+      }
+      is TTUpgradeKeypadByPackageParam -> {
+        stream.write(221)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -8596,6 +9350,338 @@ interface TTAccessoryHostApi {
     }
   }
 }
+/**
+ * 固件升级参数槽与停止。
+ *
+ * 订阅 [TTEventChannelApi] 对应升级流之前调用 `setUpgrade*Param`。
+ * 停止方法只结束本路升级，不得 abort 其他设备的 DFU。
+ *
+ * Generated interface from Pigeon that represents a handler of messages from Flutter.
+ */
+interface TTUpgradeHostApi {
+  /**
+   * 订阅 [TTEventChannelApi.upgradeLock] 前调用。
+   *
+   * [param] 锁固件包升级参数。
+   */
+  fun setUpgradeLockParam(param: TTUpgradeLockParam)
+  /**
+   * 订阅 [TTEventChannelApi.upgradeGateway] 前调用。
+   *
+   * [param] 网关网络 DFU 参数。
+   */
+  fun setUpgradeGatewayParam(param: TTUpgradeGatewayParam)
+  /**
+   * 订阅 [TTEventChannelApi.upgradeGatewayByPackage] 前调用。
+   *
+   * [param] 网关固件包升级参数。
+   */
+  fun setUpgradeGatewayByPackageParam(param: TTUpgradeGatewayByPackageParam)
+  /**
+   * 订阅 [TTEventChannelApi.upgradeWaterMeter] 前调用。
+   *
+   * [param] 水表网络升级参数。
+   */
+  fun setUpgradeWaterMeterParam(param: TTUpgradeWaterMeterParam)
+  /**
+   * 订阅 [TTEventChannelApi.upgradeWaterMeterByPackage] 前调用。
+   *
+   * 调用方须已对该水表调用过 [TTAccessoryHostApi.waterMeterSetClientParam]。
+   *
+   * [param] 水表固件包升级参数。
+   */
+  fun setUpgradeWaterMeterByPackageParam(param: TTUpgradeWaterMeterByPackageParam)
+  /**
+   * 订阅 [TTEventChannelApi.upgradeElectricMeter] 前调用。
+   *
+   * [param] 电表网络升级参数。
+   */
+  fun setUpgradeElectricMeterParam(param: TTUpgradeElectricMeterParam)
+  /**
+   * 订阅 [TTEventChannelApi.upgradeElectricMeterByPackage] 前调用。
+   *
+   * 调用方须已对该电表调用过 [TTAccessoryHostApi.electricMeterSetClientParam]。
+   *
+   * [param] 电表固件包升级参数。
+   */
+  fun setUpgradeElectricMeterByPackageParam(param: TTUpgradeElectricMeterByPackageParam)
+  /**
+   * 订阅 [TTEventChannelApi.upgradeKeypad] 前调用。
+   *
+   * [param] 键盘网络升级参数。
+   */
+  fun setUpgradeKeypadParam(param: TTUpgradeKeypadParam)
+  /**
+   * 订阅 [TTEventChannelApi.upgradeKeypadByPackage] 前调用。
+   *
+   * [param] 键盘固件包升级参数。
+   */
+  fun setUpgradeKeypadByPackageParam(param: TTUpgradeKeypadByPackageParam)
+  /** 停止锁升级。 */
+  fun stopUpgradeLock()
+  /** 停止网关升级（网络 DFU 与固件包共用）。 */
+  fun stopUpgradeGateway()
+  /** 停止水表升级。不得 abort 锁或网关 DFU。 */
+  fun stopUpgradeWaterMeter()
+  /** 停止电表升级。不得 abort 锁或网关 DFU。 */
+  fun stopUpgradeElectricMeter()
+  /** 停止键盘升级。不得 abort 锁或网关 DFU。 */
+  fun stopUpgradeKeypad()
+
+  companion object {
+    /** The codec used by TTUpgradeHostApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      MessagesPigeonCodec()
+    }
+    /** Sets up an instance of `TTUpgradeHostApi` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: TTUpgradeHostApi?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.setUpgradeLockParam$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val paramArg = args[0] as TTUpgradeLockParam
+            val wrapped: List<Any?> = try {
+              api.setUpgradeLockParam(paramArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.setUpgradeGatewayParam$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val paramArg = args[0] as TTUpgradeGatewayParam
+            val wrapped: List<Any?> = try {
+              api.setUpgradeGatewayParam(paramArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.setUpgradeGatewayByPackageParam$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val paramArg = args[0] as TTUpgradeGatewayByPackageParam
+            val wrapped: List<Any?> = try {
+              api.setUpgradeGatewayByPackageParam(paramArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.setUpgradeWaterMeterParam$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val paramArg = args[0] as TTUpgradeWaterMeterParam
+            val wrapped: List<Any?> = try {
+              api.setUpgradeWaterMeterParam(paramArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.setUpgradeWaterMeterByPackageParam$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val paramArg = args[0] as TTUpgradeWaterMeterByPackageParam
+            val wrapped: List<Any?> = try {
+              api.setUpgradeWaterMeterByPackageParam(paramArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.setUpgradeElectricMeterParam$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val paramArg = args[0] as TTUpgradeElectricMeterParam
+            val wrapped: List<Any?> = try {
+              api.setUpgradeElectricMeterParam(paramArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.setUpgradeElectricMeterByPackageParam$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val paramArg = args[0] as TTUpgradeElectricMeterByPackageParam
+            val wrapped: List<Any?> = try {
+              api.setUpgradeElectricMeterByPackageParam(paramArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.setUpgradeKeypadParam$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val paramArg = args[0] as TTUpgradeKeypadParam
+            val wrapped: List<Any?> = try {
+              api.setUpgradeKeypadParam(paramArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.setUpgradeKeypadByPackageParam$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val paramArg = args[0] as TTUpgradeKeypadByPackageParam
+            val wrapped: List<Any?> = try {
+              api.setUpgradeKeypadByPackageParam(paramArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeLock$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopUpgradeLock()
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeGateway$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopUpgradeGateway()
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeWaterMeter$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopUpgradeWaterMeter()
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeElectricMeter$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopUpgradeElectricMeter()
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.ttlock_flutter.TTUpgradeHostApi.stopUpgradeKeypad$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              api.stopUpgradeKeypad()
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
 
 private class MessagesPigeonStreamHandler<T>(
     val wrapper: MessagesPigeonEventChannelWrapper<T>
@@ -8637,7 +9723,7 @@ class PigeonEventSink<T>(private val sink: EventChannel.EventSink) {
  * 持续事件流接口。
  *
  * 订阅任一流方法前，须通过对应 [TTLockHostApi] / [TTGatewayHostApi] /
- * [TTAccessoryHostApi] 的 `set*Param` 方法写入上下文参数。
+ * [TTAccessoryHostApi] / [TTUpgradeHostApi] 的 `set*Param` 方法写入上下文参数。
  */
 abstract class LockScanLockStreamHandler : MessagesPigeonEventChannelWrapper<TTLockScanModel> {
   companion object {
@@ -8907,6 +9993,159 @@ abstract class AccessoryElectricMeterStartScanStreamHandler : MessagesPigeonEven
   }
 // Implement methods from MessagesPigeonEventChannelWrapper
 override fun onListen(p0: Any?, sink: PigeonEventSink<TTMeterScanModel>) {}
+
+override fun onCancel(p0: Any?) {}
+}
+      
+abstract class UpgradeLockStreamHandler : MessagesPigeonEventChannelWrapper<TTUpgradeEvent> {
+  companion object {
+    fun register(messenger: BinaryMessenger, streamHandler: UpgradeLockStreamHandler, instanceName: String = "") {
+      var channelName: String = "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeLock"
+      if (instanceName.isNotEmpty()) {
+        channelName += ".$instanceName"
+      }
+      val internalStreamHandler = MessagesPigeonStreamHandler<TTUpgradeEvent>(streamHandler)
+      EventChannel(messenger, channelName, MessagesPigeonMethodCodec).setStreamHandler(internalStreamHandler)
+    }
+  }
+// Implement methods from MessagesPigeonEventChannelWrapper
+override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {}
+
+override fun onCancel(p0: Any?) {}
+}
+      
+abstract class UpgradeGatewayStreamHandler : MessagesPigeonEventChannelWrapper<TTUpgradeEvent> {
+  companion object {
+    fun register(messenger: BinaryMessenger, streamHandler: UpgradeGatewayStreamHandler, instanceName: String = "") {
+      var channelName: String = "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeGateway"
+      if (instanceName.isNotEmpty()) {
+        channelName += ".$instanceName"
+      }
+      val internalStreamHandler = MessagesPigeonStreamHandler<TTUpgradeEvent>(streamHandler)
+      EventChannel(messenger, channelName, MessagesPigeonMethodCodec).setStreamHandler(internalStreamHandler)
+    }
+  }
+// Implement methods from MessagesPigeonEventChannelWrapper
+override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {}
+
+override fun onCancel(p0: Any?) {}
+}
+      
+abstract class UpgradeGatewayByPackageStreamHandler : MessagesPigeonEventChannelWrapper<TTUpgradeEvent> {
+  companion object {
+    fun register(messenger: BinaryMessenger, streamHandler: UpgradeGatewayByPackageStreamHandler, instanceName: String = "") {
+      var channelName: String = "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeGatewayByPackage"
+      if (instanceName.isNotEmpty()) {
+        channelName += ".$instanceName"
+      }
+      val internalStreamHandler = MessagesPigeonStreamHandler<TTUpgradeEvent>(streamHandler)
+      EventChannel(messenger, channelName, MessagesPigeonMethodCodec).setStreamHandler(internalStreamHandler)
+    }
+  }
+// Implement methods from MessagesPigeonEventChannelWrapper
+override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {}
+
+override fun onCancel(p0: Any?) {}
+}
+      
+abstract class UpgradeWaterMeterStreamHandler : MessagesPigeonEventChannelWrapper<TTUpgradeEvent> {
+  companion object {
+    fun register(messenger: BinaryMessenger, streamHandler: UpgradeWaterMeterStreamHandler, instanceName: String = "") {
+      var channelName: String = "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeWaterMeter"
+      if (instanceName.isNotEmpty()) {
+        channelName += ".$instanceName"
+      }
+      val internalStreamHandler = MessagesPigeonStreamHandler<TTUpgradeEvent>(streamHandler)
+      EventChannel(messenger, channelName, MessagesPigeonMethodCodec).setStreamHandler(internalStreamHandler)
+    }
+  }
+// Implement methods from MessagesPigeonEventChannelWrapper
+override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {}
+
+override fun onCancel(p0: Any?) {}
+}
+      
+abstract class UpgradeWaterMeterByPackageStreamHandler : MessagesPigeonEventChannelWrapper<TTUpgradeEvent> {
+  companion object {
+    fun register(messenger: BinaryMessenger, streamHandler: UpgradeWaterMeterByPackageStreamHandler, instanceName: String = "") {
+      var channelName: String = "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeWaterMeterByPackage"
+      if (instanceName.isNotEmpty()) {
+        channelName += ".$instanceName"
+      }
+      val internalStreamHandler = MessagesPigeonStreamHandler<TTUpgradeEvent>(streamHandler)
+      EventChannel(messenger, channelName, MessagesPigeonMethodCodec).setStreamHandler(internalStreamHandler)
+    }
+  }
+// Implement methods from MessagesPigeonEventChannelWrapper
+override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {}
+
+override fun onCancel(p0: Any?) {}
+}
+      
+abstract class UpgradeElectricMeterStreamHandler : MessagesPigeonEventChannelWrapper<TTUpgradeEvent> {
+  companion object {
+    fun register(messenger: BinaryMessenger, streamHandler: UpgradeElectricMeterStreamHandler, instanceName: String = "") {
+      var channelName: String = "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeElectricMeter"
+      if (instanceName.isNotEmpty()) {
+        channelName += ".$instanceName"
+      }
+      val internalStreamHandler = MessagesPigeonStreamHandler<TTUpgradeEvent>(streamHandler)
+      EventChannel(messenger, channelName, MessagesPigeonMethodCodec).setStreamHandler(internalStreamHandler)
+    }
+  }
+// Implement methods from MessagesPigeonEventChannelWrapper
+override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {}
+
+override fun onCancel(p0: Any?) {}
+}
+      
+abstract class UpgradeElectricMeterByPackageStreamHandler : MessagesPigeonEventChannelWrapper<TTUpgradeEvent> {
+  companion object {
+    fun register(messenger: BinaryMessenger, streamHandler: UpgradeElectricMeterByPackageStreamHandler, instanceName: String = "") {
+      var channelName: String = "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeElectricMeterByPackage"
+      if (instanceName.isNotEmpty()) {
+        channelName += ".$instanceName"
+      }
+      val internalStreamHandler = MessagesPigeonStreamHandler<TTUpgradeEvent>(streamHandler)
+      EventChannel(messenger, channelName, MessagesPigeonMethodCodec).setStreamHandler(internalStreamHandler)
+    }
+  }
+// Implement methods from MessagesPigeonEventChannelWrapper
+override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {}
+
+override fun onCancel(p0: Any?) {}
+}
+      
+abstract class UpgradeKeypadStreamHandler : MessagesPigeonEventChannelWrapper<TTUpgradeEvent> {
+  companion object {
+    fun register(messenger: BinaryMessenger, streamHandler: UpgradeKeypadStreamHandler, instanceName: String = "") {
+      var channelName: String = "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeKeypad"
+      if (instanceName.isNotEmpty()) {
+        channelName += ".$instanceName"
+      }
+      val internalStreamHandler = MessagesPigeonStreamHandler<TTUpgradeEvent>(streamHandler)
+      EventChannel(messenger, channelName, MessagesPigeonMethodCodec).setStreamHandler(internalStreamHandler)
+    }
+  }
+// Implement methods from MessagesPigeonEventChannelWrapper
+override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {}
+
+override fun onCancel(p0: Any?) {}
+}
+      
+abstract class UpgradeKeypadByPackageStreamHandler : MessagesPigeonEventChannelWrapper<TTUpgradeEvent> {
+  companion object {
+    fun register(messenger: BinaryMessenger, streamHandler: UpgradeKeypadByPackageStreamHandler, instanceName: String = "") {
+      var channelName: String = "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeKeypadByPackage"
+      if (instanceName.isNotEmpty()) {
+        channelName += ".$instanceName"
+      }
+      val internalStreamHandler = MessagesPigeonStreamHandler<TTUpgradeEvent>(streamHandler)
+      EventChannel(messenger, channelName, MessagesPigeonMethodCodec).setStreamHandler(internalStreamHandler)
+    }
+  }
+// Implement methods from MessagesPigeonEventChannelWrapper
+override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {}
 
 override fun onCancel(p0: Any?) {}
 }
