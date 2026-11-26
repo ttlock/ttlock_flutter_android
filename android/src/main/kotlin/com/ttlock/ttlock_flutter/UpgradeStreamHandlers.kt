@@ -12,6 +12,9 @@ import com.ttlock.bl.sdk.entity.LockError
 import com.ttlock.bl.sdk.gateway.api.GatewayDfuClient
 import com.ttlock.bl.sdk.gateway.callback.DfuCallback as GatewayDfuCallback
 import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.EventChannel
+import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val UPGRADE_BUSY = "upgrade already in progress"
 private const val LOCK_SYSTEM_INFO_DELAY_MS = 3000L
@@ -75,47 +78,168 @@ private fun rejectNotImplemented(sink: PigeonEventSink<TTUpgradeEvent>, operatio
 }
 
 /**
- * 本路是否真正占有会话。第二路 busy 的 onCancel 不能 take 掉第一路。
+ * 替换 listen 的同步 onCancel 期间 > 0。这次取消只换 sink，不能拆掉已占有的会话。
+ */
+private var upgradeRelistenDepth = 0
+
+/**
+ * 同一个 EventChannel handler 上的多次 listen 共用这扇门。
+ *
+ * 忙拒绝和缺参不能清掉已经占有的会话。每张 listen 一张票据：占有的记下代际，否则为 null。
+ * 真正的 cancel 先核销 null 票据，所以第二路自己的 onCancel 不会 abort 第一路。
+ * 只有核销到当前代际时才 take 并 abort。
  */
 private class UpgradeListenGate(private val kind: String) {
     private var ownsSession = false
     var generation: Long = 0L
         private set
 
+    private val tickets = ArrayDeque<Long?>()
+    private var cancelSerial = 0L
+    private val queuedCancels = ArrayDeque<Long>()
+
     fun begin(
         sink: PigeonEventSink<TTUpgradeEvent>,
         param: Any?,
         missingMessage: String,
     ): Boolean {
-        ownsSession = false
+        if (upgradeRelistenDepth > 0 && queuedCancels.isNotEmpty()) {
+            queuedCancels.removeLast()
+        }
         if (param == null) {
             sink.error(TTLockUpgradeError.UPGRADE_FAIL.raw.toString(), missingMessage, null)
             sink.endOfStream()
+            tickets.addLast(null)
             return false
         }
-        val generation = UpgradeSession.tryBegin(kind)
-        if (generation == null) {
+        val started = UpgradeSession.tryBegin(kind)
+        if (started == null) {
             sink.error(TTLockUpgradeError.UPGRADE_FAIL.raw.toString(), UPGRADE_BUSY, null)
             sink.endOfStream()
+            tickets.addLast(null)
             return false
         }
-        this.generation = generation
-        UpgradeSession.bind(kind, generation, sink)
+        generation = started
+        UpgradeSession.bind(kind, started, sink)
         ownsSession = true
+        tickets.addLast(started)
         return true
     }
 
     fun cancel(abort: () -> Unit) {
-        if (!ownsSession) return
-        ownsSession = false
-        val sink = if (kind == UpgradeSession.KIND_LOCK) {
-            takeLockSession()
-        } else {
-            UpgradeSession.take(kind)
+        val id = ++cancelSerial
+        queuedCancels.addLast(id)
+        upgradeMainHandler.post {
+            val index = queuedCancels.indexOf(id)
+            if (index < 0) return@post
+            queuedCancels.removeAt(index)
+            releaseOne(abort)
         }
-        if (sink == null) return
+    }
+
+    private fun releaseOne(abort: () -> Unit) {
+        val unowned = tickets.indexOfFirst { it == null }
+        if (unowned >= 0) {
+            tickets.removeAt(unowned)
+            return
+        }
+        if (tickets.isEmpty() || !ownsSession) return
+        val token = tickets.removeFirst() ?: return
+        if (token != generation) return
+        ownsSession = false
+        val taken = takeMatching(kind, token) ?: return
         abort()
     }
+}
+
+/**
+ * EventChannel 在第二次 cancel 时会因为 sink 已被清掉而不再回调。
+ * 这里每次 cancel 都转给 handler，第一路稍后的 onCancel 仍能 abort。
+ * 新的 listen 若替换旧 sink，会先同步 onCancel，再 begin；门闩把这次同步取消丢掉。
+ */
+private class UpgradeChannelBridge(
+    private val messenger: BinaryMessenger,
+    private val channelName: String,
+    private val handler: MessagesPigeonEventChannelWrapper<TTUpgradeEvent>,
+) : BinaryMessenger.BinaryMessageHandler {
+    private var active: Sink? = null
+
+    override fun onMessage(message: ByteBuffer?, reply: BinaryMessenger.BinaryReply) {
+        if (message == null) {
+            reply.reply(null)
+            return
+        }
+        val call = MessagesPigeonMethodCodec.decodeMethodCall(message)
+        when (call.method) {
+            "listen" -> onListen(call.arguments, reply)
+            "cancel" -> onCancel(reply)
+            else -> reply.reply(null)
+        }
+    }
+
+    private fun onListen(arguments: Any?, reply: BinaryMessenger.BinaryReply) {
+        val sink = Sink()
+        val replacing = active != null
+        active = sink
+        upgradeRelistenDepth++
+        try {
+            if (replacing) {
+                handler.onCancel(null)
+            }
+            handler.onListen(arguments, sink.pigeon)
+            reply.reply(MessagesPigeonMethodCodec.encodeSuccessEnvelope(null))
+        } catch (e: RuntimeException) {
+            active = null
+            reply.reply(MessagesPigeonMethodCodec.encodeErrorEnvelope("error", e.message, null))
+        } finally {
+            upgradeRelistenDepth--
+        }
+    }
+
+    private fun onCancel(reply: BinaryMessenger.BinaryReply) {
+        active = null
+        try {
+            handler.onCancel(null)
+            reply.reply(MessagesPigeonMethodCodec.encodeSuccessEnvelope(null))
+        } catch (e: RuntimeException) {
+            reply.reply(MessagesPigeonMethodCodec.encodeErrorEnvelope("error", e.message, null))
+        }
+    }
+
+    private inner class Sink {
+        private val ended = AtomicBoolean(false)
+        val pigeon: PigeonEventSink<TTUpgradeEvent> = PigeonEventSink(
+            object : EventChannel.EventSink {
+                override fun success(event: Any?) {
+                    if (!canSend()) return
+                    messenger.send(channelName, MessagesPigeonMethodCodec.encodeSuccessEnvelope(event))
+                }
+
+                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                    if (!canSend()) return
+                    messenger.send(
+                        channelName,
+                        MessagesPigeonMethodCodec.encodeErrorEnvelope(errorCode, errorMessage, errorDetails),
+                    )
+                }
+
+                override fun endOfStream() {
+                    if (!ended.compareAndSet(false, true) || active !== this@Sink) return
+                    messenger.send(channelName, null)
+                }
+
+                private fun canSend(): Boolean = !ended.get() && active === this@Sink
+            },
+        )
+    }
+}
+
+private fun attachUpgradeChannel(
+    messenger: BinaryMessenger,
+    channelName: String,
+    handler: MessagesPigeonEventChannelWrapper<TTUpgradeEvent>,
+) {
+    messenger.setMessageHandler(channelName, UpgradeChannelBridge(messenger, channelName, handler))
 }
 
 private fun emitProgress(kind: String, generation: Long, percent: Int) {
@@ -265,6 +389,11 @@ class UpgradeLockImpl : UpgradeLockStreamHandler {
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
         register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeLock",
+            this,
+        )
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
@@ -295,6 +424,11 @@ class UpgradeGatewayImpl : UpgradeGatewayStreamHandler {
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
         register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeGateway",
+            this,
+        )
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
@@ -311,6 +445,11 @@ class UpgradeGatewayByPackageImpl : UpgradeGatewayByPackageStreamHandler {
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
         register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeGatewayByPackage",
+            this,
+        )
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
@@ -351,6 +490,11 @@ class UpgradeWaterMeterImpl : UpgradeWaterMeterStreamHandler {
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
         register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeWaterMeter",
+            this,
+        )
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
@@ -366,6 +510,11 @@ class UpgradeWaterMeterByPackageImpl : UpgradeWaterMeterByPackageStreamHandler {
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
         register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeWaterMeterByPackage",
+            this,
+        )
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
@@ -381,6 +530,11 @@ class UpgradeElectricMeterImpl : UpgradeElectricMeterStreamHandler {
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
         register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeElectricMeter",
+            this,
+        )
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
@@ -396,6 +550,11 @@ class UpgradeElectricMeterByPackageImpl : UpgradeElectricMeterByPackageStreamHan
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
         register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeElectricMeterByPackage",
+            this,
+        )
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
@@ -411,6 +570,11 @@ class UpgradeKeypadImpl : UpgradeKeypadStreamHandler {
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
         register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeKeypad",
+            this,
+        )
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
@@ -426,6 +590,11 @@ class UpgradeKeypadByPackageImpl : UpgradeKeypadByPackageStreamHandler {
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
         register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeKeypadByPackage",
+            this,
+        )
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
