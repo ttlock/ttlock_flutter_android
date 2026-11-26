@@ -17,6 +17,15 @@ App  →  ttlock_flutter（Dart API）
 
 对外 Dart API 在父插件（`package:ttlock_flutter/ttlock.dart`）。本包负责把 Pigeon Host API 接到 TTLock Android 原生 SDK。
 
+## 固件升级
+
+接线 `TTUpgradeHostApi` 与各升级 EventChannel。本地化（`premise`）仅编译**锁固件包**与**网关固件包** DFU；网关网络 / 表计 / 键盘升级不编入。取消订阅即中止 DFU。约定见父仓库 [README_ZH](https://github.com/ttlock/ttlock_flutter/blob/mix/README_ZH.md)「固件升级」。
+
+因 flatDir AAR 不带 Maven 传递依赖，另声明：
+
+- `api 'no.nordicsemi.android:dfu:2.5.0'`（Nordic DFU；Release R8 需要）
+- `implementation 'com.squareup.okhttp3:okhttp:3.12.10'`
+
 ## 原生 SDK（本分支：本地化）
 
 | 项 | 值 |
@@ -30,6 +39,8 @@ App  →  ttlock_flutter（Dart API）
 另外声明：
 
 - `implementation 'com.google.code.gson:gson:2.6.2'`
+- `api 'no.nordicsemi.android:dfu:2.5.0'`
+- `implementation 'com.squareup.okhttp3:okhttp:3.12.10'`
 
 若 `TTLockOnPremise` 缺少某些配件 / 表计 API，请查看 `android/build.gradle` 中关于可选引入 `ttlock-release.aar` 的注释——仅在清楚双 AAR 风险时再启用。
 
@@ -61,7 +72,8 @@ your_app/android/app/libs/TTLockOnPremise.aar
 |--|---------------------|--------|
 | 场景 | 本地化（On-Premise） | 在线 / 云端 SDK |
 | AAR | `TTLockOnPremise.aar` | `ttlock-release.aar` |
-| 额外 Maven 依赖 | 本打包方式通常不需要 | Nordic DFU、OkHttp |
+| 额外 Maven 依赖 | Nordic DFU、OkHttp、Gson | Nordic DFU、OkHttp、Gson |
+| 升级能力 | 仅锁固件包 + 网关固件包 | 全量 |
 
 ## 权限（宿主 App）
 
@@ -96,7 +108,7 @@ your_app/android/app/libs/TTLockOnPremise.aar
 
 ## Release / R8
 
-插件已通过 `android/consumer-rules.pro` 向宿主透传 keep 规则（TTLock / 插件 / Gson `TypeToken`）。请勿随意去掉这些 consumer rules，否则 minify 后可能出现 `BLE_SERVER_NOT_INIT` 等蓝牙初始化失败。
+插件已通过 `android/consumer-rules.pro` 向宿主透传 keep 规则（TTLock / 插件 / Gson `TypeToken` / DFU）。请勿随意去掉这些 consumer rules，否则 minify 后可能出现 `BLE_SERVER_NOT_INIT` 等蓝牙初始化失败。
 
 ## 通过父插件接入
 

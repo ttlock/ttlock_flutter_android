@@ -17,6 +17,15 @@ App  →  ttlock_flutter (Dart API)
 
 Dart-facing APIs live in the parent plugin (`package:ttlock_flutter/ttlock.dart`). This package wires Pigeon host APIs to the native TTLock Android SDK.
 
+## Firmware upgrade
+
+Wires `TTUpgradeHostApi` + upgrade EventChannels. On-premise (`premise`) compiles **lock firmware-package** and **gateway firmware-package** DFU only; network gateway / meter / keypad upgrade is not built. Progress streams abort on subscription cancel. See the parent [README](https://github.com/ttlock/ttlock_flutter/blob/mix/README.md) «Firmware upgrade».
+
+Also declared (flatDir AARs do not pull Maven transitive deps):
+
+- `api 'no.nordicsemi.android:dfu:2.5.0'` (Nordic DFU; required for release R8)
+- `implementation 'com.squareup.okhttp3:okhttp:3.12.10'`
+
 ## Native SDK (this branch: on-premise)
 
 | Item | Value |
@@ -30,6 +39,8 @@ Dart-facing APIs live in the parent plugin (`package:ttlock_flutter/ttlock.dart`
 Also declared:
 
 - `implementation 'com.google.code.gson:gson:2.6.2'`
+- `api 'no.nordicsemi.android:dfu:2.5.0'`
+- `implementation 'com.squareup.okhttp3:okhttp:3.12.10'`
 
 If a specific accessory / meter API is missing from `TTLockOnPremise`, check the comment in `android/build.gradle` about optionally adding `ttlock-release.aar` — only do so when you understand the dual-AAR risk.
 
@@ -61,7 +72,8 @@ Do not enable both `TTLockOnPremise` and `ttlock-release` in one build unless yo
 |--|-------------------------|--------|
 | Scenario | On-premise | Online / cloud SDK |
 | AAR | `TTLockOnPremise.aar` | `ttlock-release.aar` |
-| Extra Maven deps | Usually not required by this packaging | Nordic DFU, OkHttp |
+| Extra Maven deps | Nordic DFU, OkHttp, Gson | Nordic DFU, OkHttp, Gson |
+| Upgrade APIs | Lock package + gateway package | Full set |
 
 ## Permissions (host app)
 
@@ -96,7 +108,7 @@ Suggested host `minSdk`: **26+** (plugin `minSdkVersion` in `android/build.gradl
 
 ## Release / R8
 
-The plugin ships `android/consumer-rules.pro` so host release builds keep TTLock / plugin / Gson `TypeToken` classes. Do not strip these consumer rules — otherwise you may see BLE init failures such as `BLE_SERVER_NOT_INIT` after minify.
+The plugin ships `android/consumer-rules.pro` so host release builds keep TTLock / plugin / Gson `TypeToken` / DFU classes. Do not strip these consumer rules — otherwise you may see BLE init failures such as `BLE_SERVER_NOT_INIT` after minify.
 
 ## Integration via parent plugin
 

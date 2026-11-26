@@ -7,6 +7,10 @@ import com.ttlock.bl.sdk.api.LockDfuClient
 import com.ttlock.bl.sdk.api.TTLockClient
 import com.ttlock.bl.sdk.callback.DfuCallback as LockDfuCallback
 import com.ttlock.bl.sdk.callback.GetLockSystemInfoCallback
+import com.ttlock.bl.sdk.dfu.DeviceDfuClient
+import com.ttlock.bl.sdk.dfu.DeviceDfuModel
+import com.ttlock.bl.sdk.dfu.DeviceType
+import com.ttlock.bl.sdk.dfu.DfuCallback as DeviceDfuCallback
 import com.ttlock.bl.sdk.entity.DeviceInfo
 import com.ttlock.bl.sdk.entity.LockError
 import com.ttlock.bl.sdk.gateway.api.GatewayDfuClient
@@ -285,6 +289,53 @@ private fun runUpgradeStart(kind: String, generation: Long, start: () -> Unit) {
     }
 }
 
+private fun deviceModel(
+    type: DeviceType,
+    deviceId: Long,
+    deviceMac: String,
+    lockData: String,
+    slotNumber: Long,
+    featureValue: String,
+): DeviceDfuModel {
+    val model = DeviceDfuModel()
+    model.type = type
+    model.deviceId = deviceId.toInt()
+    model.deviceMac = deviceMac
+    model.lockData = lockData
+    model.slotNumber = slotNumber.toInt()
+    model.featureValue = featureValue
+    return model
+}
+
+private fun deviceCallback(kind: String, generation: Long): DeviceDfuCallback {
+    return object : DeviceDfuCallback {
+        override fun onProgressChanged(
+            deviceAddress: String?,
+            percent: Int,
+            speed: Float,
+            avgSpeed: Float,
+            currentPart: Int,
+            partsTotal: Int,
+        ) {
+            emitProgress(kind, generation, percent)
+        }
+
+        override fun onStatusChanged(status: Int) {}
+
+        override fun onDfuSuccess(deviceAddress: String?) {
+            succeedUpgrade(kind, generation)
+        }
+
+        override fun onDfuError(errorCode: Int, errorContent: String?) {
+            failUpgrade(kind, generation, TTLockUpgradeError.UPGRADE_FAIL, errorContent)
+        }
+
+        override fun onDfuAborted(deviceAddress: String?) {
+            failUpgrade(kind, generation, TTLockUpgradeError.UPGRADE_FAIL, "upgrade aborted")
+        }
+    }
+}
+
 private val gatewayPackageCallback = object : GatewayDfuCallback {
     override fun onDfuSuccess(deviceAddress: String?) {
         val generation = gatewayPackageCallbackGeneration
@@ -384,7 +435,6 @@ private fun lockCallback(lockData: String, generation: Long): LockDfuCallback {
 
 class UpgradeLockImpl : UpgradeLockStreamHandler {
     var context: Context
-    private val gate = UpgradeListenGate(UpgradeSession.KIND_LOCK)
 
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
@@ -397,8 +447,34 @@ class UpgradeLockImpl : UpgradeLockStreamHandler {
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
-        val param = UpgradeStreamParams.lock
-        if (!gate.begin(sink, param, "请先通过 setUpgradeLockParam 设置参数后再订阅 upgradeLock")) {
+        rejectNotImplemented(sink, "upgradeLock")
+    }
+
+    override fun onCancel(p0: Any?) {}
+}
+
+class UpgradeLockByPackageImpl : UpgradeLockByPackageStreamHandler {
+    var context: Context
+    private val gate = UpgradeListenGate(UpgradeSession.KIND_LOCK)
+
+    constructor(context: Context, messenger: BinaryMessenger) {
+        this.context = context
+        register(messenger, this)
+        attachUpgradeChannel(
+            messenger,
+            "dev.flutter.pigeon.ttlock_flutter.TTEventChannelApi.upgradeLockByPackage",
+            this,
+        )
+    }
+
+    override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
+        val param = UpgradeStreamParams.lockByPackage
+        if (!gate.begin(
+                sink,
+                param,
+                "请先通过 setUpgradeLockByPackageParam 设置参数后再订阅 upgradeLockByPackage",
+            )
+        ) {
             return
         }
         val lockParam = param ?: return
@@ -486,6 +562,7 @@ class UpgradeGatewayByPackageImpl : UpgradeGatewayByPackageStreamHandler {
 
 class UpgradeWaterMeterImpl : UpgradeWaterMeterStreamHandler {
     var context: Context
+    private val gate = UpgradeListenGate(UpgradeSession.KIND_WATER)
 
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
@@ -498,14 +575,30 @@ class UpgradeWaterMeterImpl : UpgradeWaterMeterStreamHandler {
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
-        rejectNotImplemented(sink, "upgradeWaterMeter")
+        val param = UpgradeStreamParams.waterMeter
+        if (!gate.begin(sink, param, "请先通过 setUpgradeWaterMeterParam 设置参数后再订阅 upgradeWaterMeter")) {
+            return
+        }
+        val meterParam = param ?: return
+        runUpgradeStart(UpgradeSession.KIND_WATER, gate.generation) {
+            DeviceDfuClient.getInstance().startDfu(
+                context,
+                meterParam.clientId,
+                meterParam.accessToken,
+                deviceModel(DeviceType.WATER_METER, meterParam.deviceId, meterParam.deviceMac, "", 0L, ""),
+                deviceCallback(UpgradeSession.KIND_WATER, gate.generation),
+            )
+        }
     }
 
-    override fun onCancel(p0: Any?) {}
+    override fun onCancel(p0: Any?) {
+        gate.cancel { DeviceDfuClient.getInstance().abortDfu() }
+    }
 }
 
 class UpgradeWaterMeterByPackageImpl : UpgradeWaterMeterByPackageStreamHandler {
     var context: Context
+    private val gate = UpgradeListenGate(UpgradeSession.KIND_WATER)
 
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
@@ -518,14 +611,34 @@ class UpgradeWaterMeterByPackageImpl : UpgradeWaterMeterByPackageStreamHandler {
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
-        rejectNotImplemented(sink, "upgradeWaterMeterByPackage")
+        val param = UpgradeStreamParams.waterMeterByPackage
+        if (!gate.begin(
+                sink,
+                param,
+                "请先通过 setUpgradeWaterMeterByPackageParam 设置参数后再订阅 upgradeWaterMeterByPackage",
+            )
+        ) {
+            return
+        }
+        val packageParam = param ?: return
+        runUpgradeStart(UpgradeSession.KIND_WATER, gate.generation) {
+            DeviceDfuClient.getInstance().startDfu(
+                context,
+                deviceModel(DeviceType.WATER_METER, packageParam.deviceId, packageParam.deviceMac, "", 0L, ""),
+                packageParam.firmwarePackage,
+                deviceCallback(UpgradeSession.KIND_WATER, gate.generation),
+            )
+        }
     }
 
-    override fun onCancel(p0: Any?) {}
+    override fun onCancel(p0: Any?) {
+        gate.cancel { DeviceDfuClient.getInstance().abortDfu() }
+    }
 }
 
 class UpgradeElectricMeterImpl : UpgradeElectricMeterStreamHandler {
     var context: Context
+    private val gate = UpgradeListenGate(UpgradeSession.KIND_ELECTRIC)
 
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
@@ -538,14 +651,35 @@ class UpgradeElectricMeterImpl : UpgradeElectricMeterStreamHandler {
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
-        rejectNotImplemented(sink, "upgradeElectricMeter")
+        val param = UpgradeStreamParams.electricMeter
+        if (!gate.begin(
+                sink,
+                param,
+                "请先通过 setUpgradeElectricMeterParam 设置参数后再订阅 upgradeElectricMeter",
+            )
+        ) {
+            return
+        }
+        val meterParam = param ?: return
+        runUpgradeStart(UpgradeSession.KIND_ELECTRIC, gate.generation) {
+            DeviceDfuClient.getInstance().startDfu(
+                context,
+                meterParam.clientId,
+                meterParam.accessToken,
+                deviceModel(DeviceType.ELECTRIC_METER, meterParam.deviceId, meterParam.deviceMac, "", 0L, ""),
+                deviceCallback(UpgradeSession.KIND_ELECTRIC, gate.generation),
+            )
+        }
     }
 
-    override fun onCancel(p0: Any?) {}
+    override fun onCancel(p0: Any?) {
+        gate.cancel { DeviceDfuClient.getInstance().abortDfu() }
+    }
 }
 
 class UpgradeElectricMeterByPackageImpl : UpgradeElectricMeterByPackageStreamHandler {
     var context: Context
+    private val gate = UpgradeListenGate(UpgradeSession.KIND_ELECTRIC)
 
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
@@ -558,14 +692,34 @@ class UpgradeElectricMeterByPackageImpl : UpgradeElectricMeterByPackageStreamHan
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
-        rejectNotImplemented(sink, "upgradeElectricMeterByPackage")
+        val param = UpgradeStreamParams.electricMeterByPackage
+        if (!gate.begin(
+                sink,
+                param,
+                "请先通过 setUpgradeElectricMeterByPackageParam 设置参数后再订阅 upgradeElectricMeterByPackage",
+            )
+        ) {
+            return
+        }
+        val packageParam = param ?: return
+        runUpgradeStart(UpgradeSession.KIND_ELECTRIC, gate.generation) {
+            DeviceDfuClient.getInstance().startDfu(
+                context,
+                deviceModel(DeviceType.ELECTRIC_METER, packageParam.deviceId, packageParam.deviceMac, "", 0L, ""),
+                packageParam.firmwarePackage,
+                deviceCallback(UpgradeSession.KIND_ELECTRIC, gate.generation),
+            )
+        }
     }
 
-    override fun onCancel(p0: Any?) {}
+    override fun onCancel(p0: Any?) {
+        gate.cancel { DeviceDfuClient.getInstance().abortDfu() }
+    }
 }
 
 class UpgradeKeypadImpl : UpgradeKeypadStreamHandler {
     var context: Context
+    private val gate = UpgradeListenGate(UpgradeSession.KIND_KEYPAD)
 
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
@@ -578,14 +732,37 @@ class UpgradeKeypadImpl : UpgradeKeypadStreamHandler {
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
-        rejectNotImplemented(sink, "upgradeKeypad")
+        val param = UpgradeStreamParams.keypad
+        if (!gate.begin(sink, param, "请先通过 setUpgradeKeypadParam 设置参数后再订阅 upgradeKeypad")) {
+            return
+        }
+        val keypadParam = param ?: return
+        runUpgradeStart(UpgradeSession.KIND_KEYPAD, gate.generation) {
+            DeviceDfuClient.getInstance().startDfu(
+                context,
+                keypadParam.clientId,
+                keypadParam.accessToken,
+                deviceModel(
+                    DeviceType.KEYPAD,
+                    keypadParam.deviceId,
+                    keypadParam.deviceMac,
+                    keypadParam.lockData ?: "",
+                    keypadParam.slotNumber ?: 0L,
+                    keypadParam.featureValue ?: "",
+                ),
+                deviceCallback(UpgradeSession.KIND_KEYPAD, gate.generation),
+            )
+        }
     }
 
-    override fun onCancel(p0: Any?) {}
+    override fun onCancel(p0: Any?) {
+        gate.cancel { DeviceDfuClient.getInstance().abortDfu() }
+    }
 }
 
 class UpgradeKeypadByPackageImpl : UpgradeKeypadByPackageStreamHandler {
     var context: Context
+    private val gate = UpgradeListenGate(UpgradeSession.KIND_KEYPAD)
 
     constructor(context: Context, messenger: BinaryMessenger) {
         this.context = context
@@ -598,8 +775,34 @@ class UpgradeKeypadByPackageImpl : UpgradeKeypadByPackageStreamHandler {
     }
 
     override fun onListen(p0: Any?, sink: PigeonEventSink<TTUpgradeEvent>) {
-        rejectNotImplemented(sink, "upgradeKeypadByPackage")
+        val param = UpgradeStreamParams.keypadByPackage
+        if (!gate.begin(
+                sink,
+                param,
+                "请先通过 setUpgradeKeypadByPackageParam 设置参数后再订阅 upgradeKeypadByPackage",
+            )
+        ) {
+            return
+        }
+        val packageParam = param ?: return
+        runUpgradeStart(UpgradeSession.KIND_KEYPAD, gate.generation) {
+            DeviceDfuClient.getInstance().startDfu(
+                context,
+                deviceModel(
+                    DeviceType.KEYPAD,
+                    packageParam.deviceId,
+                    packageParam.deviceMac,
+                    packageParam.lockData ?: "",
+                    packageParam.slotNumber ?: 0L,
+                    packageParam.featureValue ?: "",
+                ),
+                packageParam.firmwarePackage,
+                deviceCallback(UpgradeSession.KIND_KEYPAD, gate.generation),
+            )
+        }
     }
 
-    override fun onCancel(p0: Any?) {}
+    override fun onCancel(p0: Any?) {
+        gate.cancel { DeviceDfuClient.getInstance().abortDfu() }
+    }
 }

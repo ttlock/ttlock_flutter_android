@@ -8,6 +8,9 @@ object UpgradeStreamParams {
     var lock: TTUpgradeLockParam? = null
 
     @Volatile
+    var lockByPackage: TTUpgradeLockByPackageParam? = null
+
+    @Volatile
     var gateway: TTUpgradeGatewayParam? = null
 
     @Volatile

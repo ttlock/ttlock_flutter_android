@@ -15,6 +15,10 @@ class UpgradeApi : TTUpgradeHostApi {
         UpgradeStreamParams.lock = param
     }
 
+    override fun setUpgradeLockByPackageParam(param: TTUpgradeLockByPackageParam) {
+        UpgradeStreamParams.lockByPackage = param
+    }
+
     override fun setUpgradeGatewayParam(param: TTUpgradeGatewayParam) {
         UpgradeStreamParams.gateway = param
     }
