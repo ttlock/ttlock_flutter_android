@@ -51,12 +51,13 @@ class UpgradeApi : TTUpgradeHostApi {
     }
 
     override fun stopUpgradeLock() {
-        val sink = UpgradeSession.take(UpgradeSession.KIND_LOCK)
+        val sink = takeLockSession()
         LockDfuClient.getDefault().abortDfu()
         sink?.endOfStream()
     }
 
     override fun stopUpgradeGateway() {
+        clearGatewayCallbackGeneration()
         val sink = UpgradeSession.take(UpgradeSession.KIND_GATEWAY)
         GatewayDfuClient.getDefault().abortDfu()
         if (sink != null) {

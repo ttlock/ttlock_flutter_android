@@ -18,10 +18,55 @@ import com.ttlock.bl.sdk.gateway.callback.DfuCallback as GatewayDfuCallback
 import io.flutter.plugin.common.BinaryMessenger
 
 private const val UPGRADE_BUSY = "upgrade already in progress"
-private const val INVALID_PARAMETER = "invalidParameter"
 private const val LOCK_SYSTEM_INFO_DELAY_MS = 3000L
 
 private val upgradeMainHandler = Handler(Looper.getMainLooper())
+
+/**
+ * 锁 DFU 成功后延迟刷新系统信息。stop / cancel 走 [takeLockSession] 摘掉它，
+ * 否则 3s 后的回调会落到下一次锁升级会话上。
+ */
+private var lockSystemInfoRefresh: Runnable? = null
+
+/**
+ * 网关 DFU 回调对象固定，不能在闭包里捕获代际。网络与固件包各记一份，
+ * 避免迟到的另一路回调读到下一次会话的代际。stop / cancel 清 0。
+ */
+@Volatile
+private var gatewayNetCallbackGeneration = 0L
+
+@Volatile
+private var gatewayPackageCallbackGeneration = 0L
+
+private fun clearLockSystemInfoRefreshLocked() {
+    lockSystemInfoRefresh?.let { upgradeMainHandler.removeCallbacks(it) }
+    lockSystemInfoRefresh = null
+}
+
+/**
+ * 摘掉延迟刷新并结束当前锁会话，两步在同一把锁里，避免摘掉之后又被 post 上。
+ */
+internal fun takeLockSession(): PigeonEventSink<TTUpgradeEvent>? {
+    synchronized(UpgradeSession) {
+        clearLockSystemInfoRefreshLocked()
+        return UpgradeSession.take(UpgradeSession.KIND_LOCK)
+    }
+}
+
+private fun takeMatching(kind: String, generation: Long): PigeonEventSink<TTUpgradeEvent>? {
+    synchronized(UpgradeSession) {
+        if (!UpgradeSession.matches(kind, generation)) return null
+        if (kind == UpgradeSession.KIND_LOCK) {
+            clearLockSystemInfoRefreshLocked()
+        }
+        return UpgradeSession.take(kind, generation)
+    }
+}
+
+internal fun clearGatewayCallbackGeneration() {
+    gatewayNetCallbackGeneration = 0L
+    gatewayPackageCallbackGeneration = 0L
+}
 
 private fun onUpgradeMain(block: () -> Unit) {
     if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -36,6 +81,8 @@ private fun onUpgradeMain(block: () -> Unit) {
  */
 private class UpgradeListenGate(private val kind: String) {
     private var ownsSession = false
+    var generation: Long = 0L
+        private set
 
     fun begin(
         sink: PigeonEventSink<TTUpgradeEvent>,
@@ -44,16 +91,18 @@ private class UpgradeListenGate(private val kind: String) {
     ): Boolean {
         ownsSession = false
         if (param == null) {
-            sink.error(INVALID_PARAMETER, missingMessage, null)
+            sink.error(TTLockUpgradeError.UPGRADE_FAIL.raw.toString(), missingMessage, null)
             sink.endOfStream()
             return false
         }
-        if (!UpgradeSession.tryBegin(kind)) {
+        val generation = UpgradeSession.tryBegin(kind)
+        if (generation == null) {
             sink.error(TTLockUpgradeError.UPGRADE_FAIL.raw.toString(), UPGRADE_BUSY, null)
             sink.endOfStream()
             return false
         }
-        UpgradeSession.bind(kind, sink)
+        this.generation = generation
+        UpgradeSession.bind(kind, generation, sink)
         ownsSession = true
         return true
     }
@@ -61,13 +110,19 @@ private class UpgradeListenGate(private val kind: String) {
     fun cancel(abort: () -> Unit) {
         if (!ownsSession) return
         ownsSession = false
-        if (UpgradeSession.take(kind) == null) return
+        val sink = if (kind == UpgradeSession.KIND_LOCK) {
+            takeLockSession()
+        } else {
+            UpgradeSession.take(kind)
+        }
+        if (sink == null) return
         abort()
     }
 }
 
-private fun emitProgress(kind: String, percent: Int) {
+private fun emitProgress(kind: String, generation: Long, percent: Int) {
     onUpgradeMain {
+        if (!UpgradeSession.matches(kind, generation)) return@onUpgradeMain
         val sink = UpgradeSession.peek(kind) ?: return@onUpgradeMain
         sink.success(
             TTUpgradeEvent(
@@ -79,17 +134,17 @@ private fun emitProgress(kind: String, percent: Int) {
     }
 }
 
-private fun failUpgrade(kind: String, code: TTLockUpgradeError, message: String?) {
+private fun failUpgrade(kind: String, generation: Long, code: TTLockUpgradeError, message: String?) {
     onUpgradeMain {
-        val sink = UpgradeSession.take(kind) ?: return@onUpgradeMain
+        val sink = takeMatching(kind, generation) ?: return@onUpgradeMain
         sink.error(code.raw.toString(), message ?: "", null)
         sink.endOfStream()
     }
 }
 
-private fun succeedUpgrade(kind: String, lockData: String? = null) {
+private fun succeedUpgrade(kind: String, generation: Long, lockData: String? = null) {
     onUpgradeMain {
-        val sink = UpgradeSession.take(kind) ?: return@onUpgradeMain
+        val sink = takeMatching(kind, generation) ?: return@onUpgradeMain
         sink.success(
             TTUpgradeEvent(
                 phase = TTUpgradePhase.SUCCESS,
@@ -100,11 +155,11 @@ private fun succeedUpgrade(kind: String, lockData: String? = null) {
     }
 }
 
-private fun runUpgradeStart(kind: String, start: () -> Unit) {
+private fun runUpgradeStart(kind: String, generation: Long, start: () -> Unit) {
     try {
         start()
     } catch (t: Throwable) {
-        failUpgrade(kind, TTLockUpgradeError.UPGRADE_FAIL, t.message)
+        failUpgrade(kind, generation, TTLockUpgradeError.UPGRADE_FAIL, t.message)
     }
 }
 
@@ -126,7 +181,7 @@ private fun deviceModel(
     return model
 }
 
-private fun deviceCallback(kind: String): DeviceDfuCallback {
+private fun deviceCallback(kind: String, generation: Long): DeviceDfuCallback {
     return object : DeviceDfuCallback {
         override fun onProgressChanged(
             deviceAddress: String?,
@@ -136,21 +191,21 @@ private fun deviceCallback(kind: String): DeviceDfuCallback {
             currentPart: Int,
             partsTotal: Int,
         ) {
-            emitProgress(kind, percent)
+            emitProgress(kind, generation, percent)
         }
 
         override fun onStatusChanged(status: Int) {}
 
         override fun onDfuSuccess(deviceAddress: String?) {
-            succeedUpgrade(kind)
+            succeedUpgrade(kind, generation)
         }
 
         override fun onDfuError(errorCode: Int, errorContent: String?) {
-            failUpgrade(kind, TTLockUpgradeError.UPGRADE_FAIL, errorContent)
+            failUpgrade(kind, generation, TTLockUpgradeError.UPGRADE_FAIL, errorContent)
         }
 
         override fun onDfuAborted(deviceAddress: String?) {
-            failUpgrade(kind, TTLockUpgradeError.UPGRADE_FAIL, "upgrade aborted")
+            failUpgrade(kind, generation, TTLockUpgradeError.UPGRADE_FAIL, "upgrade aborted")
         }
     }
 }
@@ -160,12 +215,14 @@ private fun deviceCallback(kind: String): DeviceDfuCallback {
  */
 private val gatewayNetCallback = object : GatewayDfuCallback {
     override fun onDfuSuccess(deviceAddress: String?) {
+        val generation = gatewayNetCallbackGeneration
         UpgradeSession.cacheGatewayMac = ""
-        succeedUpgrade(UpgradeSession.KIND_GATEWAY)
+        succeedUpgrade(UpgradeSession.KIND_GATEWAY, generation)
     }
 
     override fun onDfuAborted(deviceAddress: String?) {
-        failUpgrade(UpgradeSession.KIND_GATEWAY, TTLockUpgradeError.UPGRADE_FAIL, "upgrade aborted")
+        val generation = gatewayNetCallbackGeneration
+        failUpgrade(UpgradeSession.KIND_GATEWAY, generation, TTLockUpgradeError.UPGRADE_FAIL, "upgrade aborted")
     }
 
     override fun onProgressChanged(
@@ -176,22 +233,25 @@ private val gatewayNetCallback = object : GatewayDfuCallback {
         currentPart: Int,
         partsTotal: Int,
     ) {
-        emitProgress(UpgradeSession.KIND_GATEWAY, percent)
+        emitProgress(UpgradeSession.KIND_GATEWAY, gatewayNetCallbackGeneration, percent)
     }
 
     override fun onError() {
-        failUpgrade(UpgradeSession.KIND_GATEWAY, TTLockUpgradeError.UPGRADE_FAIL, "")
+        val generation = gatewayNetCallbackGeneration
+        failUpgrade(UpgradeSession.KIND_GATEWAY, generation, TTLockUpgradeError.UPGRADE_FAIL, "")
     }
 }
 
 private val gatewayPackageCallback = object : GatewayDfuCallback {
     override fun onDfuSuccess(deviceAddress: String?) {
+        val generation = gatewayPackageCallbackGeneration
         UpgradeSession.cacheGatewayMac = ""
-        succeedUpgrade(UpgradeSession.KIND_GATEWAY)
+        succeedUpgrade(UpgradeSession.KIND_GATEWAY, generation)
     }
 
     override fun onDfuAborted(deviceAddress: String?) {
-        failUpgrade(UpgradeSession.KIND_GATEWAY, TTLockUpgradeError.UPGRADE_FAIL, "upgrade aborted")
+        val generation = gatewayPackageCallbackGeneration
+        failUpgrade(UpgradeSession.KIND_GATEWAY, generation, TTLockUpgradeError.UPGRADE_FAIL, "upgrade aborted")
     }
 
     override fun onProgressChanged(
@@ -202,44 +262,62 @@ private val gatewayPackageCallback = object : GatewayDfuCallback {
         currentPart: Int,
         partsTotal: Int,
     ) {
-        emitProgress(UpgradeSession.KIND_GATEWAY, percent)
+        emitProgress(UpgradeSession.KIND_GATEWAY, gatewayPackageCallbackGeneration, percent)
     }
 
     override fun onError() {
-        failUpgrade(UpgradeSession.KIND_GATEWAY, TTLockUpgradeError.UPGRADE_FAIL, "")
+        val generation = gatewayPackageCallbackGeneration
+        failUpgrade(UpgradeSession.KIND_GATEWAY, generation, TTLockUpgradeError.UPGRADE_FAIL, "")
     }
 }
 
-private fun lockCallback(lockData: String, lockMac: String): LockDfuCallback {
+private fun postLockSystemInfoRefresh(lockData: String, lockMac: String, generation: Long) {
+    val runnable = object : Runnable {
+        override fun run() {
+            synchronized(UpgradeSession) {
+                if (lockSystemInfoRefresh === this) {
+                    lockSystemInfoRefresh = null
+                }
+            }
+            if (!UpgradeSession.matches(UpgradeSession.KIND_LOCK, generation)) return
+            TTLockClient.getDefault().getLockSystemInfo(
+                lockData,
+                lockMac,
+                object : GetLockSystemInfoCallback {
+                    override fun onGetLockSystemInfoSuccess(deviceInfo: DeviceInfo) {
+                        succeedUpgrade(UpgradeSession.KIND_LOCK, generation, deviceInfo.lockData)
+                    }
+
+                    override fun onFail(lockError: LockError) {
+                        failUpgrade(
+                            UpgradeSession.KIND_LOCK,
+                            generation,
+                            TTLockUpgradeError.GET_SPECIAL_VALUE_ERROR,
+                            lockError.errorMsg,
+                        )
+                    }
+                },
+            )
+        }
+    }
+    synchronized(UpgradeSession) {
+        if (!UpgradeSession.matches(UpgradeSession.KIND_LOCK, generation)) return
+        lockSystemInfoRefresh?.let { upgradeMainHandler.removeCallbacks(it) }
+        lockSystemInfoRefresh = runnable
+        upgradeMainHandler.postDelayed(runnable, LOCK_SYSTEM_INFO_DELAY_MS)
+    }
+}
+
+private fun lockCallback(lockData: String, lockMac: String, generation: Long): LockDfuCallback {
     return object : LockDfuCallback {
         override fun onDfuSuccess(deviceAddress: String?) {
-            if (UpgradeSession.peek(UpgradeSession.KIND_LOCK) == null) return
-            upgradeMainHandler.postDelayed({
-                if (UpgradeSession.peek(UpgradeSession.KIND_LOCK) == null) return@postDelayed
-                TTLockClient.getDefault().getLockSystemInfo(
-                    lockData,
-                    lockMac,
-                    object : GetLockSystemInfoCallback {
-                        override fun onGetLockSystemInfoSuccess(deviceInfo: DeviceInfo) {
-                            succeedUpgrade(UpgradeSession.KIND_LOCK, deviceInfo.lockData)
-                        }
-
-                        override fun onFail(lockError: LockError) {
-                            failUpgrade(
-                                UpgradeSession.KIND_LOCK,
-                                TTLockUpgradeError.GET_SPECIAL_VALUE_ERROR,
-                                lockError.errorMsg,
-                            )
-                        }
-                    },
-                )
-            }, LOCK_SYSTEM_INFO_DELAY_MS)
+            postLockSystemInfoRefresh(lockData, lockMac, generation)
         }
 
         override fun onStatusChanged(status: Int) {}
 
         override fun onDfuAborted(deviceAddress: String?) {
-            failUpgrade(UpgradeSession.KIND_LOCK, TTLockUpgradeError.UPGRADE_FAIL, "upgrade aborted")
+            failUpgrade(UpgradeSession.KIND_LOCK, generation, TTLockUpgradeError.UPGRADE_FAIL, "upgrade aborted")
         }
 
         override fun onProgressChanged(
@@ -250,11 +328,11 @@ private fun lockCallback(lockData: String, lockMac: String): LockDfuCallback {
             currentPart: Int,
             partsTotal: Int,
         ) {
-            emitProgress(UpgradeSession.KIND_LOCK, percent)
+            emitProgress(UpgradeSession.KIND_LOCK, generation, percent)
         }
 
         override fun onError(errorCode: Int, errorContent: String?) {
-            failUpgrade(UpgradeSession.KIND_LOCK, TTLockUpgradeError.UPGRADE_FAIL, errorContent)
+            failUpgrade(UpgradeSession.KIND_LOCK, generation, TTLockUpgradeError.UPGRADE_FAIL, errorContent)
         }
     }
 }
@@ -274,18 +352,19 @@ class UpgradeLockImpl : UpgradeLockStreamHandler {
             return
         }
         val lockParam = param ?: return
-        runUpgradeStart(UpgradeSession.KIND_LOCK) {
+        runUpgradeStart(UpgradeSession.KIND_LOCK, gate.generation) {
             LockDfuClient.getDefault().startDfu(
                 context,
                 lockParam.lockData,
                 lockParam.lockMac,
                 lockParam.firmwarePackage,
-                lockCallback(lockParam.lockData, lockParam.lockMac),
+                lockCallback(lockParam.lockData, lockParam.lockMac, gate.generation),
             )
         }
     }
 
     override fun onCancel(p0: Any?) {
+        // cancel 对锁会走 takeLockSession：removeCallbacks 与结束会话同一临界区。
         gate.cancel { LockDfuClient.getDefault().abortDfu() }
     }
 }
@@ -306,7 +385,8 @@ class UpgradeGatewayImpl : UpgradeGatewayStreamHandler {
         }
         val gatewayParam = param ?: return
         val mac = gatewayParam.gatewayMac
-        runUpgradeStart(UpgradeSession.KIND_GATEWAY) {
+        gatewayNetCallbackGeneration = gate.generation
+        runUpgradeStart(UpgradeSession.KIND_GATEWAY, gate.generation) {
             // 首次忽略 dfuType。同 MAC 且上次未成功清空 cache 时，按 dfuType 重试。
             if (mac != UpgradeSession.cacheGatewayMac) {
                 UpgradeSession.cacheGatewayMac = mac
@@ -334,6 +414,7 @@ class UpgradeGatewayImpl : UpgradeGatewayStreamHandler {
 
     override fun onCancel(p0: Any?) {
         gate.cancel {
+            clearGatewayCallbackGeneration()
             GatewayDfuClient.getDefault().abortDfu()
             UpgradeSession.cacheGatewayMac = ""
         }
@@ -360,7 +441,8 @@ class UpgradeGatewayByPackageImpl : UpgradeGatewayByPackageStreamHandler {
             return
         }
         val packageParam = param ?: return
-        runUpgradeStart(UpgradeSession.KIND_GATEWAY) {
+        gatewayPackageCallbackGeneration = gate.generation
+        runUpgradeStart(UpgradeSession.KIND_GATEWAY, gate.generation) {
             // 包升级会换掉网络 DFU 回调，清掉重试标记，避免之后同 MAC 误走 retry。
             UpgradeSession.cacheGatewayMac = ""
             GatewayDfuClient.getDefault().startDfu(
@@ -374,6 +456,7 @@ class UpgradeGatewayByPackageImpl : UpgradeGatewayByPackageStreamHandler {
 
     override fun onCancel(p0: Any?) {
         gate.cancel {
+            clearGatewayCallbackGeneration()
             GatewayDfuClient.getDefault().abortDfu()
             UpgradeSession.cacheGatewayMac = ""
         }
@@ -395,13 +478,13 @@ class UpgradeWaterMeterImpl : UpgradeWaterMeterStreamHandler {
             return
         }
         val meterParam = param ?: return
-        runUpgradeStart(UpgradeSession.KIND_WATER) {
+        runUpgradeStart(UpgradeSession.KIND_WATER, gate.generation) {
             DeviceDfuClient.getInstance().startDfu(
                 context,
                 meterParam.clientId,
                 meterParam.accessToken,
                 deviceModel(DeviceType.WATER_METER, meterParam.deviceId, meterParam.deviceMac, "", 0L, ""),
-                deviceCallback(UpgradeSession.KIND_WATER),
+                deviceCallback(UpgradeSession.KIND_WATER, gate.generation),
             )
         }
     }
@@ -431,12 +514,12 @@ class UpgradeWaterMeterByPackageImpl : UpgradeWaterMeterByPackageStreamHandler {
             return
         }
         val packageParam = param ?: return
-        runUpgradeStart(UpgradeSession.KIND_WATER) {
+        runUpgradeStart(UpgradeSession.KIND_WATER, gate.generation) {
             DeviceDfuClient.getInstance().startDfu(
                 context,
                 deviceModel(DeviceType.WATER_METER, packageParam.deviceId, packageParam.deviceMac, "", 0L, ""),
                 packageParam.firmwarePackage,
-                deviceCallback(UpgradeSession.KIND_WATER),
+                deviceCallback(UpgradeSession.KIND_WATER, gate.generation),
             )
         }
     }
@@ -466,13 +549,13 @@ class UpgradeElectricMeterImpl : UpgradeElectricMeterStreamHandler {
             return
         }
         val meterParam = param ?: return
-        runUpgradeStart(UpgradeSession.KIND_ELECTRIC) {
+        runUpgradeStart(UpgradeSession.KIND_ELECTRIC, gate.generation) {
             DeviceDfuClient.getInstance().startDfu(
                 context,
                 meterParam.clientId,
                 meterParam.accessToken,
                 deviceModel(DeviceType.ELECTRIC_METER, meterParam.deviceId, meterParam.deviceMac, "", 0L, ""),
-                deviceCallback(UpgradeSession.KIND_ELECTRIC),
+                deviceCallback(UpgradeSession.KIND_ELECTRIC, gate.generation),
             )
         }
     }
@@ -502,12 +585,12 @@ class UpgradeElectricMeterByPackageImpl : UpgradeElectricMeterByPackageStreamHan
             return
         }
         val packageParam = param ?: return
-        runUpgradeStart(UpgradeSession.KIND_ELECTRIC) {
+        runUpgradeStart(UpgradeSession.KIND_ELECTRIC, gate.generation) {
             DeviceDfuClient.getInstance().startDfu(
                 context,
                 deviceModel(DeviceType.ELECTRIC_METER, packageParam.deviceId, packageParam.deviceMac, "", 0L, ""),
                 packageParam.firmwarePackage,
-                deviceCallback(UpgradeSession.KIND_ELECTRIC),
+                deviceCallback(UpgradeSession.KIND_ELECTRIC, gate.generation),
             )
         }
     }
@@ -532,7 +615,7 @@ class UpgradeKeypadImpl : UpgradeKeypadStreamHandler {
             return
         }
         val keypadParam = param ?: return
-        runUpgradeStart(UpgradeSession.KIND_KEYPAD) {
+        runUpgradeStart(UpgradeSession.KIND_KEYPAD, gate.generation) {
             DeviceDfuClient.getInstance().startDfu(
                 context,
                 keypadParam.clientId,
@@ -545,7 +628,7 @@ class UpgradeKeypadImpl : UpgradeKeypadStreamHandler {
                     keypadParam.slotNumber ?: 0L,
                     keypadParam.featureValue ?: "",
                 ),
-                deviceCallback(UpgradeSession.KIND_KEYPAD),
+                deviceCallback(UpgradeSession.KIND_KEYPAD, gate.generation),
             )
         }
     }
@@ -575,7 +658,7 @@ class UpgradeKeypadByPackageImpl : UpgradeKeypadByPackageStreamHandler {
             return
         }
         val packageParam = param ?: return
-        runUpgradeStart(UpgradeSession.KIND_KEYPAD) {
+        runUpgradeStart(UpgradeSession.KIND_KEYPAD, gate.generation) {
             DeviceDfuClient.getInstance().startDfu(
                 context,
                 deviceModel(
@@ -587,7 +670,7 @@ class UpgradeKeypadByPackageImpl : UpgradeKeypadByPackageStreamHandler {
                     packageParam.featureValue ?: "",
                 ),
                 packageParam.firmwarePackage,
-                deviceCallback(UpgradeSession.KIND_KEYPAD),
+                deviceCallback(UpgradeSession.KIND_KEYPAD, gate.generation),
             )
         }
     }
