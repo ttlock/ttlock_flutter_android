@@ -2,7 +2,7 @@
 
 [English](./README.md)
 
-[`ttlock_flutter`](https://github.com/ttlock/ttlock_flutter) 联邦插件的 **Android 平台实现**。宿主 App 通常只依赖 **`ttlock_flutter`**，由它在 Android 上选用本包。当你维护 Android 子模块、自定义打包，或排查原生 SDK / AAR 问题时，请以本文为准。
+[`ttlock_flutter`](https://github.com/ttlock/ttlock_flutter_plus) 联邦插件的 **Android 平台实现**。宿主 App 通常只依赖 **`ttlock_flutter`**，由它在 Android 上选用本包。当你维护 Android 子模块、自定义打包，或排查原生 SDK / AAR 问题时，请以本文为准。
 
 > 当前包版本：**0.0.3**（以 `pubspec.yaml` 为准）。  
 > 本分支（**`premise`**）对接 **本地化（On-Premise）** 原生 SDK AAR（`TTLockOnPremise`）。
@@ -19,7 +19,7 @@ App  →  ttlock_flutter（Dart API）
 
 ## 固件升级
 
-接线 `TTUpgradeHostApi` 与各升级 EventChannel。本地化（`premise`）仅编译**锁固件包**与**网关固件包** DFU；网关网络 / 表计 / 键盘升级不编入。取消订阅即中止 DFU。约定见父仓库 [README_ZH](https://github.com/ttlock/ttlock_flutter/blob/mix/README_ZH.md)「固件升级」。
+接线 `TTUpgradeHostApi` 与各升级 EventChannel。本地化（`premise`）仅编译**锁固件包**与**网关固件包** DFU；网关网络 / 表计 / 键盘升级不编入。取消订阅即中止 DFU。约定见父仓库 [README_ZH](https://github.com/ttlock/ttlock_flutter_plus/blob/main/README_ZH.md)「固件升级」。
 
 因 flatDir AAR 不带 Maven 传递依赖，另声明：
 
@@ -118,9 +118,8 @@ your_app/android/app/libs/TTLockOnPremise.aar
 dependencies:
   ttlock_flutter:
     git:
-      url: https://github.com/ttlock/ttlock_flutter.git
+      url: https://github.com/ttlock/ttlock_flutter_plus.git
       path: ttlock_flutter
-      ref: mix   # 按团队发布分支 / tag 调整
 ```
 
 本地化发版时，请确认父工程 / 子模块把本包钉在 **`premise`** 分支。
@@ -129,10 +128,10 @@ dependencies:
 import 'package:ttlock_flutter/ttlock.dart';
 ```
 
-能力一览、BleGuard、API 总览见父仓库 [README_ZH](https://github.com/ttlock/ttlock_flutter/blob/mix/README_ZH.md)。
+能力一览、BleGuard、API 总览见父仓库 [README_ZH](https://github.com/ttlock/ttlock_flutter_plus/blob/main/README_ZH.md)。
 
 ## 相关资源
 
-- 父插件仓库：<https://github.com/ttlock/ttlock_flutter>
+- 父插件仓库：<https://github.com/ttlock/ttlock_flutter_plus>
 - 本包 homepage（pubspec）：同上父仓库
 - 本地化原生 SDK：从通通锁本地化交付包获取 `TTLockOnPremise.aar`
