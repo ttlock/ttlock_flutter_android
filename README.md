@@ -2,7 +2,7 @@
 
 [中文文档](./README_ZH.md)
 
-Android platform implementation of the [`ttlock_flutter`](https://github.com/ttlock/ttlock_flutter) federated plugin. Host apps normally depend on **`ttlock_flutter`**, which selects this package on Android. Use this README when you maintain the Android submodule, package a custom App, or debug native SDK / AAR issues.
+Android platform implementation of the [`ttlock_flutter`](https://github.com/ttlock/ttlock_flutter_plus) federated plugin. Host apps normally depend on **`ttlock_flutter`**, which selects this package on Android. Use this README when you maintain the Android submodule, package a custom App, or debug native SDK / AAR issues.
 
 > Current package version: **0.0.3** (see `pubspec.yaml`).  
 > This branch (**`main`**) targets the **online / cloud** native SDK AAR (`ttlock-release`).
@@ -19,7 +19,7 @@ Dart-facing APIs live in the parent plugin (`package:ttlock_flutter/ttlock.dart`
 
 ## Firmware upgrade
 
-Wires `TTUpgradeHostApi` + upgrade EventChannels to the native DFU clients. Online (`main`) supports lock / gateway (network + package) / water meter / electric meter / keypad upgrade. Progress streams abort on subscription cancel. See the parent [README](https://github.com/ttlock/ttlock_flutter/blob/mix/README.md) «Firmware upgrade».
+Wires `TTUpgradeHostApi` + upgrade EventChannels to the native DFU clients. Online (`main`) supports lock / gateway (network + package) / water meter / electric meter / keypad upgrade. Progress streams abort on subscription cancel. See the parent [README](https://github.com/ttlock/ttlock_flutter_plus/blob/main/README.md) «Firmware upgrade».
 
 Nordic DFU (`no.nordicsemi.android:dfu`) is required because flatDir AARs do not bring Maven transitive deps.
 
@@ -112,19 +112,19 @@ Most apps should depend on the parent package, not this package alone:
 dependencies:
   ttlock_flutter:
     git:
-      url: https://github.com/ttlock/ttlock_flutter.git
+      url: https://github.com/ttlock/ttlock_flutter_plus.git
       path: ttlock_flutter
-      ref: mix   # use the release branch / tag your team ships
+      ref: main   # use the release branch / tag your team ships
 ```
 
 ```dart
 import 'package:ttlock_flutter/ttlock.dart';
 ```
 
-See the parent [README](https://github.com/ttlock/ttlock_flutter/blob/mix/README.md) for features, BleGuard, and API overview.
+See the parent [README](https://github.com/ttlock/ttlock_flutter_plus/blob/main/README.md) for features, BleGuard, and API overview.
 
 ## Resources
 
-- Parent plugin: <https://github.com/ttlock/ttlock_flutter>
+- Parent plugin: <https://github.com/ttlock/ttlock_flutter_plus>
 - This package homepage (pubspec): same parent repo
 - Cloud REST APIs: open-platform `cloud/` docs (lock init / lockData updates must pair with BLE operations)
