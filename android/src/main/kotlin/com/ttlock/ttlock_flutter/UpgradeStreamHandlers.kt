@@ -75,8 +75,20 @@ private fun onUpgradeMain(block: () -> Unit) {
     }
 }
 
+/**
+ * premise 不支持网络 DFU（upgradeLock / upgradeGateway）。
+ * 对齐 iOS [makeUpgradeNotImplementedError]：code=UPGRADE_FAIL，message=notImplemented，details=操作名。
+ */
+private fun makeUpgradeNotImplementedError(operation: String): FlutterError {
+    return FlutterError(
+        TTLockUpgradeError.UPGRADE_FAIL.raw.toString(),
+        "notImplemented",
+        operation,
+    )
+}
+
 private fun rejectNotImplemented(sink: PigeonEventSink<TTUpgradeEvent>, operation: String) {
-    val error = makeNotImplementedError(operation)
+    val error = makeUpgradeNotImplementedError(operation)
     sink.error(error.code, error.message, error.details)
     sink.endOfStream()
 }
